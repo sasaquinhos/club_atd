@@ -384,31 +384,55 @@ function renderEventSummary(eventIds) {
   eventSummaryArea.innerHTML = eventIds.map(eventId => {
     const event = state.events.find(e => String(e.id) === String(eventId));
     if (!event) return '';
+
+    // Get all active members for this event
+    const activeMembers = state.members.filter(m => isMemberActiveAt(m, event.date));
+
+    // Get the attendance map for this event
     const atts = Object.keys(state.attendance).filter(k => k.startsWith(`${eventId}_`))
-      .map(k => ({ m: state.members.find(m => String(m.id) === String(k.split('_')[1])), ...state.attendance[k] }))
-      .filter(a => a.m && isMemberActiveAt(a.m, event.date));
+      .map(k => ({ memberId: k.split('_')[1], ...state.attendance[k] }));
 
-    const summary = { att: atts.filter(a => a.status === '出席').length, wat: atts.filter(a => a.status === '見学').length, abs: atts.filter(a => a.status === '欠席').length, pen: atts.filter(a => a.status === '未定').length };
+    // Count by status
+    const summary = {
+      att: atts.filter(a => a.status === '出席').length,
+      wat: atts.filter(a => a.status === '見学').length,
+      abs: atts.filter(a => a.status === '欠席').length,
+      pen: atts.filter(a => a.status === '未定').length,
+      none: 0
+    };
 
-    // Group by status
+    // Calculate unanswered active members
+    const answeredMemberIds = new Set(atts.map(a => String(a.memberId)));
+    const unansweredMembers = activeMembers.filter(m => !answeredMemberIds.has(String(m.id)));
+    summary.none = unansweredMembers.length;
+
+    // Group by status for display
     const statuses = ['出席', '見学', '欠席', '未定'];
-    const groupedHtml = statuses.map(status => {
-      const filtered = atts.filter(a => a.status === status);
+    let groupedHtml = statuses.map(status => {
+      const filtered = atts.map(a => ({ m: activeMembers.find(m => String(m.id) === String(a.memberId)), ...a }))
+        .filter(a => a.m && a.status === status);
       if (filtered.length === 0) return '';
       const names = filtered.map(a => `${a.m.name}${a.comment ? `<small>(${a.comment})</small>` : ''}`).join('、');
       return `<div style="padding: 0.2rem 0;"><strong>${status}</strong>: ${names}</div>`;
     }).join('');
 
+    // Add unanswered list
+    if (unansweredMembers.length > 0) {
+      const unansweredNames = unansweredMembers.map(m => m.name).join('、');
+      groupedHtml += `<div style="padding: 0.2rem 0; color: #ef4444;"><strong>未回答</strong>: ${unansweredNames}</div>`;
+    }
+
     return `<div class="card">
         <div class="item-header"><h3 style="font-size: 1.1rem;">現在の集計: ${event.title}</h3></div>
-        <div class="summary-grid" style="margin-top: 0.5rem;">
+        <div class="summary-grid" style="margin-top: 0.5rem; grid-template-columns: repeat(5, 1fr);">
           <div class="summary-item"><span class="summary-label">出席</span><span class="summary-count">${summary.att}</span></div>
           <div class="summary-item"><span class="summary-label">見学</span><span class="summary-count">${summary.wat}</span></div>
           <div class="summary-item"><span class="summary-label">欠席</span><span class="summary-count">${summary.abs}</span></div>
           <div class="summary-item"><span class="summary-label">未定</span><span class="summary-count">${summary.pen}</span></div>
+          <div class="summary-item" style="border-color: #fecaca;"><span class="summary-label" style="color: #ef4444;">未回答</span><span class="summary-count" style="color: #ef4444;">${summary.none}</span></div>
         </div>
         <div class="mt-1" style="font-size:0.85rem; border-top:1px solid #f1f5f9; padding-top:0.5rem;">
-          ${groupedHtml || '<div style="color:#999">未回答</div>'}
+          ${groupedHtml || '<div style="color:#999">登録された回答はありません</div>'}
         </div>
       </div>`;
   }).join('');
