@@ -294,10 +294,16 @@ function updateEventSelect(periodId) {
   }
   const period = state.periods.find(p => String(p.id) === String(periodId));
   if (!period) return;
-  const filteredEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate).sort((a, b) => new Date(b.date) - new Date(a.date));
+  const filteredEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate)
+    .sort((a, b) => {
+      // Sort by date first (descending)
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      // If same date, sort by time (descending)
+      return (b.time || "").localeCompare(a.time || "");
+    });
   const currentEventId = eventSelect.value;
   eventSelect.innerHTML = '<option value="">-- イベントを選択 --</option>' +
-    filteredEvents.map(e => `<option value="${e.id}" ${String(e.id) === String(currentEventId) ? 'selected' : ''}>${formatDate(e.date)} ${e.title}</option>`).join('');
+    filteredEvents.map(e => `<option value="${e.id}" ${String(e.id) === String(currentEventId) ? 'selected' : ''}>${formatDate(e.date)} ${e.time || ''} ${e.title}</option>`).join('');
   eventSelect.disabled = false;
   eventSelect.onchange = (e) => {
     if (e.target.value) {
