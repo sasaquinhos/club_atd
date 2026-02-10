@@ -8,8 +8,11 @@ const state = {
   events: [],  // { id, title, date, time, location, note }
   attendance: {}, // { "eventId_memberId": { status, comment } }
   isAdminAuthenticated: false,
-  loading: false
+  loading: false,
+  isBackgroundSyncing: false
 };
+
+const STORAGE_KEY = 'projectC_v4_data';
 
 // DOM Elements
 const loadingOverlay = document.getElementById('loading-overlay');
@@ -43,9 +46,40 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
-  setLoading(true);
-  await loadData();
+  // 1. Try to load from local storage first (Stale-While-Revalidate)
+  const hasLocalData = loadFromLocal();
 
+  if (hasLocalData) {
+    renderAllWithPeriod();
+  } else {
+    // If no local data, we must show loading and wait
+    setLoading(true);
+  }
+
+  // 2. Background sync from server
+  state.isBackgroundSyncing = true;
+  try {
+    const success = await loadDataFromServer();
+    if (success) {
+      renderAllWithPeriod();
+    }
+  } catch (err) {
+    console.error('Background sync failed:', err);
+  } finally {
+    state.isBackgroundSyncing = false;
+    setLoading(false);
+  }
+
+  // Modal Submit
+  if (editForm) {
+    editForm.onsubmit = async (e) => {
+      e.preventDefault();
+      await saveEditMaster();
+    };
+  }
+}
+
+function renderAllWithPeriod() {
   const today = getTodayStr();
   const curPeriod = state.periods.find(p => today >= p.startDate && today <= p.endDate);
 
@@ -54,14 +88,14 @@ async function init() {
   renderAdminUI();
 
   if (curPeriod) {
-    if (periodSelect) periodSelect.value = curPeriod.id;
-    if (statusPeriodSelect) {
+    if (periodSelect && !periodSelect.value) periodSelect.value = curPeriod.id;
+    if (statusPeriodSelect && !statusPeriodSelect.value) {
       statusPeriodSelect.value = curPeriod.id;
       renderStatusUI();
     }
 
     const periodEvents = state.events.filter(e => e.date >= curPeriod.startDate && e.date <= curPeriod.endDate);
-    if (periodEvents.length > 0) {
+    if (periodEvents.length > 0 && !eventSelect.value) {
       let targetDate = '';
       const futureEvents = periodEvents.filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
       if (futureEvents.length > 0) targetDate = futureEvents[0].date;
@@ -78,16 +112,6 @@ async function init() {
       }
     }
   }
-
-  // Modal Submit
-  if (editForm) {
-    editForm.onsubmit = async (e) => {
-      e.preventDefault();
-      await saveEditMaster();
-    };
-  }
-
-  setLoading(false);
 }
 
 function getTodayStr() {
@@ -123,23 +147,47 @@ async function apiCall(action, data = {}) {
   }
 }
 
-async function loadData() {
+async function loadDataFromServer() {
   const res = await apiCall('get_initial_data');
   if (res.result === 'success') {
     state.periods = res.data.periods || [];
     state.members = res.data.members || [];
     state.events = res.data.events || [];
     state.attendance = res.data.attendance || {};
-  } else {
-    // Fallback to local storage if API fails or not set
-    const savedData = localStorage.getItem('projectC_v4_data');
+    saveToLocal();
+    return true;
+  }
+  return false;
+}
+
+function loadFromLocal() {
+  try {
+    const savedData = localStorage.getItem(STORAGE_KEY);
     if (savedData) {
       const parsed = JSON.parse(savedData);
       state.periods = parsed.periods || [];
       state.members = parsed.members || [];
       state.events = parsed.events || [];
       state.attendance = parsed.attendance || {};
+      return true;
     }
+  } catch (e) {
+    console.error('Failed to load from local storage', e);
+  }
+  return false;
+}
+
+function saveToLocal() {
+  try {
+    const dataToSave = {
+      periods: state.periods,
+      members: state.members,
+      events: state.events,
+      attendance: state.attendance
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+  } catch (e) {
+    console.error('Failed to save to local storage', e);
   }
 }
 
@@ -347,13 +395,22 @@ async function saveAttendanceLocal(eventId, memberId, status, commentElId) {
   const key = `${eventId}_${memberId}`;
   const current = state.attendance[key] || {};
   const newStatus = status !== null ? status : current.status;
-  state.attendance[key] = { status: newStatus, comment: comment };
 
-  // Sync to server
-  await apiCall('update_attendance', { eventId, memberId, status: newStatus, comment });
+  // Optimistic UI: Update local state and UI immediately
+  state.attendance[key] = { status: newStatus, comment: comment };
+  saveToLocal();
 
   const currentEventId = eventSelect.value;
   if (currentEventId) renderEventSummary([currentEventId]);
+
+  // Background sync to server (no await or loading screen)
+  apiCall('update_attendance', { eventId, memberId, status: newStatus, comment })
+    .then(res => {
+      if (res.result !== 'success') {
+        console.error('Failed to sync attendance:', res.error);
+        // Optionally revert local state if server fails critically
+      }
+    });
 }
 
 // --- Status Logic ---
@@ -507,9 +564,13 @@ async function saveEditMaster() {
   }
 
   setLoading(true);
-  await apiCall(`update_${type}`, payload);
-  await loadData();
-  renderAll();
+  const res = await apiCall(`update_${type}`, payload);
+  if (res.result === 'success') {
+    saveToLocal();
+    renderAll();
+  } else {
+    alert('更新に失敗しました: ' + res.error);
+  }
   setLoading(false);
   closeModal();
 }
@@ -523,9 +584,16 @@ function closeModal() {
 async function deleteMaster(type, id) {
   if (!confirm('本当に削除しますか？関連するデータも削除されます。')) return;
   setLoading(true);
-  await apiCall(`delete_${type}`, { id });
-  await loadData();
-  renderAll();
+  const res = await apiCall(`delete_${type}`, { id });
+  if (res.result === 'success') {
+    if (type === 'period') state.periods = state.periods.filter(x => String(x.id) !== String(id));
+    else if (type === 'member') state.members = state.members.filter(x => String(x.id) !== String(id));
+    else if (type === 'event') state.events = state.events.filter(x => String(x.id) !== String(id));
+    saveToLocal();
+    renderAll();
+  } else {
+    alert('削除に失敗しました: ' + res.error);
+  }
   setLoading(false);
 }
 
@@ -537,9 +605,15 @@ if (addPeriodForm) {
     const id = 'p-' + Date.now();
     const payload = { id, name: document.getElementById('period-name').value, startDate: document.getElementById('period-start').value, endDate: document.getElementById('period-end').value };
     setLoading(true);
-    await apiCall('add_period', payload);
-    await loadData();
-    addPeriodForm.reset(); renderAll();
+    const res = await apiCall('add_period', payload);
+    if (res.result === 'success') {
+      state.periods.push({ id, name: payload.name, startDate: payload.startDate, endDate: payload.endDate });
+      saveToLocal();
+      addPeriodForm.reset();
+      renderAll();
+    } else {
+      alert('追加に失敗しました: ' + res.error);
+    }
     setLoading(false);
   };
 }
@@ -550,9 +624,15 @@ if (addMemberForm) {
     const id = 'm-' + Date.now();
     const payload = { id, name: document.getElementById('member-name').value, affiliation: document.getElementById('member-affiliation').value, joinMonth: '', leaveMonth: '' };
     setLoading(true);
-    await apiCall('add_member', payload);
-    await loadData();
-    addMemberForm.reset(); renderAll();
+    const res = await apiCall('add_member', payload);
+    if (res.result === 'success') {
+      state.members.push({ id, name: payload.name, affiliation: payload.affiliation, joinmonth: '', leavemonth: '' });
+      saveToLocal();
+      addMemberForm.reset();
+      renderAll();
+    } else {
+      alert('追加に失敗しました: ' + res.error);
+    }
     setLoading(false);
   };
 }
@@ -563,9 +643,15 @@ if (addEventForm) {
     const id = 'e-' + Date.now();
     const payload = { id, title: document.getElementById('event-title').value, date: document.getElementById('event-date').value, time: document.getElementById('event-time').value, location: document.getElementById('event-location').value, note: document.getElementById('event-note').value };
     setLoading(true);
-    await apiCall('add_event', payload);
-    await loadData();
-    addEventForm.reset(); renderAll();
+    const res = await apiCall('add_event', payload);
+    if (res.result === 'success') {
+      state.events.push({ id, ...payload, date: payload.date, time: payload.time });
+      saveToLocal();
+      addEventForm.reset();
+      renderAll();
+    } else {
+      alert('追加に失敗しました: ' + res.error);
+    }
     setLoading(false);
   };
 }
