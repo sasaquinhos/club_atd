@@ -357,8 +357,17 @@ function renderAttendanceInput(eventIds) {
   registrationInputArea.innerHTML = eventIds.map(eventId => {
     const event = state.events.find(e => String(e.id) === String(eventId));
     if (!event) return '';
+
+    const today = getTodayStr();
+    const isPast = event.date < today;
+
     const key = `${eventId}_${memberId}`;
     const att = state.attendance[key] || { status: '', comment: '' };
+
+    if (isPast) {
+      return ''; // Hide input card completely for past events
+    }
+
     return `<div class="card" style="border-left: 5px solid var(--primary); margin-bottom: 1rem;">
         <h3>${event.title} の出欠回答</h3>
         <div class="item-meta" style="margin-bottom: 0.5rem;">${formatDate(event.date)} ${event.time} @ ${event.location}</div>
@@ -426,7 +435,7 @@ function renderEventSummary(eventIds) {
     }
 
     return `<div class="card">
-        <div class="item-header"><h3 style="font-size: 1.1rem;">現在の集計: ${event.title}</h3></div>
+        <div class="item-header"><h3 style="font-size: 1.1rem;">集計: ${event.title}</h3></div>
         <div class="summary-grid" style="margin-top: 0.5rem; grid-template-columns: repeat(5, 1fr);">
           <div class="summary-item"><span class="summary-label">出席</span><span class="summary-count">${summary.att}</span></div>
           <div class="summary-item"><span class="summary-label">見学</span><span class="summary-count">${summary.wat}</span></div>
