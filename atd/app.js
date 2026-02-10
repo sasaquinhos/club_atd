@@ -134,10 +134,13 @@ function getTodayStr() {
 }
 
 function isMemberActiveAt(member, dateStr) {
-  if (!member) return false;
-  const targetMonth = dateStr.substring(0, 7);
-  if (member.joinmonth && targetMonth < member.joinmonth) return false;
-  if (member.leavemonth && targetMonth > member.leavemonth) return false;
+  if (!member || !dateStr) return false;
+  const targetMonth = dateStr.substring(0, 7); // YYYY-MM
+  const join = member.joinmonth ? String(member.joinmonth).substring(0, 7) : null;
+  const leave = member.leavemonth ? String(member.leavemonth).substring(0, 7) : null;
+
+  if (join && targetMonth < join) return false;
+  if (leave && targetMonth > leave) return false;
   return true;
 }
 
@@ -505,18 +508,20 @@ function renderStatusUI() {
         <thead><tr style="border-bottom: 2px solid #e2e8f0; text-align: left;"><th style="padding: 0.5rem 0;">名前</th><th style="padding: 0.5rem 0;">出席/母数</th><th style="padding: 0.5rem 0; text-align: right;">率 (%)</th></tr></thead>
         <tbody>
           ${memberStats.map(s => {
-    // Gray out if they have a leavemonth set (considered a "leaver")
-    const isInactive = s.isLeaver;
-    const rowStyle = isInactive ? 'background-color: #f8fafc; color: #94a3b8;' : 'border-bottom: 1px solid #f1f5f9;';
-    const nameStyle = isInactive ? 'font-weight:normal; color: #94a3b8;' : 'font-weight:bold; color: var(--text-main);';
-    const rateStyle = isInactive ? 'color: #94a3b8;' : 'color:var(--primary);';
+    // Determine if they are "retired" (left before today or the period ends)
+    const todayMonth = getTodayStr().substring(0, 7);
+    const isRetired = s.isLeaver && s.m.leavemonth.substring(0, 7) < todayMonth;
+
+    const rowStyle = isRetired ? 'background-color: #f1f5f9; color: #64748b;' : 'border-bottom: 1px solid #f1f5f9;';
+    const nameStyle = isRetired ? 'font-weight:normal; color: #475569;' : 'font-weight:bold; color: var(--text-main);';
+    const rateStyle = isRetired ? 'color: #94a3b8;' : 'color:var(--primary);';
 
     return `<tr style="${rowStyle} border-bottom: 1px solid #e2e8f0;">
               <td style="padding: 0.75rem 0.5rem;">
-                <div style="${nameStyle}">${s.name}${isInactive ? ` <span style="font-size:0.7rem; background:#e2e8f0; padding:1px 4px; border-radius:3px; color:#64748b;">${s.m.leavemonth}退会</span>` : ''}</div>
-                <div style="font-size:0.75rem; color:inherit;">${s.aff || '-'}</div>
+                <div style="${nameStyle}">${s.name}${isRetired ? ` <span style="font-size:0.7rem; background:#cbd5e1; color:#475569; padding:1px 4px; border-radius:3px; margin-left:4px;">${s.m.leavemonth.substring(0, 7)}退会</span>` : ''}</div>
+                <div style="font-size:0.75rem; color:inherit; opacity: 0.8;">${s.aff || '-'}</div>
               </td>
-              <td style="padding: 0.75rem 0;">${s.count} / ${s.total}</td>
+              <td style="padding: 0.75rem 0; opacity: ${isRetired ? '0.7' : '1'};">${s.count} / ${s.total}</td>
               <td style="padding: 0.75rem 0.5rem; text-align: right; ${nameStyle} ${rateStyle} font-size:1.1rem;">${s.rate}%</td>
             </tr>`;
   }).join('')}
