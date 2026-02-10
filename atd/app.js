@@ -476,11 +476,18 @@ function renderStatusUI() {
     statusListArea.innerHTML = '<div class="card" style="color:#666; text-align:center;">期間を選択すると出席率が表示されます</div>';
     return;
   }
+  const today = getTodayStr();
   const period = state.periods.find(p => String(p.id) === String(currentPeriodId));
-  const periodEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate);
+  // Only include events occurring BEFORE today (or all events in the period if the user prefers, but requirement says "before today")
+  const periodEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate && e.date < today);
   const periodActiveMembers = state.members.filter(m => {
-    if (m.joinmonth && m.joinmonth > period.enddate.substring(0, 7)) return false;
-    if (m.leavemonth && m.leavemonth < period.startdate.substring(0, 7)) return false;
+    // Only show if they were active at some point during this period
+    const joinIdx = m.joinmonth ? String(m.joinmonth).substring(0, 7) : "0000-00";
+    const leaveIdx = m.leavemonth ? String(m.leavemonth).substring(0, 7) : "9999-99";
+    const periodStart = period.startdate.substring(0, 7);
+    const periodEnd = period.enddate.substring(0, 7);
+    if (joinIdx > periodEnd) return false;
+    if (leaveIdx < periodStart) return false;
     return true;
   });
   if (periodActiveMembers.length === 0) {
@@ -498,7 +505,11 @@ function renderStatusUI() {
       });
     }
     const isLeaver = !!m.leavemonth;
-    return { name: m.name, aff: m.affiliation, count, total, rate: total > 0 ? ((count / total) * 100).toFixed(1) : "0.0", isLeaver, m };
+    // Determine if they joined DURING this period
+    const joinMonth = m.joinmonth ? String(m.joinmonth).substring(0, 7) : "";
+    const isNewJoiner = joinMonth >= period.startdate.substring(0, 7) && joinMonth <= period.enddate.substring(0, 7);
+
+    return { name: m.name, aff: m.affiliation, count, total, rate: total > 0 ? ((count / total) * 100).toFixed(1) : "0.0", isLeaver, isNewJoiner, m };
   }).sort((a, b) => b.rate - a.rate);
 
   statusListArea.innerHTML = `<div class="card">
@@ -509,17 +520,25 @@ function renderStatusUI() {
         <tbody>
           ${memberStats.map(s => {
     // Determine if they are "retired" (left before today or the period ends)
-    const todayMonth = getTodayStr().substring(0, 7);
+    const todayMonth = today.substring(0, 7);
     const leaveMonthStr = s.m.leavemonth ? String(s.m.leavemonth).substring(0, 7) : "";
     const isRetired = s.isLeaver && leaveMonthStr < todayMonth;
 
-    const rowStyle = isRetired ? 'background-color: #f1f5f9; color: #64748b;' : 'border-bottom: 1px solid #f1f5f9;';
+    let rowStyle = 'border-bottom: 1px solid #e2e8f0;';
+    if (isRetired) {
+      rowStyle += 'background-color: #f1f5f9; color: #64748b;';
+    } else if (s.isNewJoiner) {
+      rowStyle += 'background-color: #fefce8;'; // Light yellow for new joiners in this period
+    } else {
+      rowStyle += 'background-color: #ffffff;';
+    }
+
     const nameStyle = isRetired ? 'font-weight:normal; color: #475569;' : 'font-weight:bold; color: var(--text-main);';
     const rateStyle = isRetired ? 'color: #94a3b8;' : 'color:var(--primary);';
 
-    return `<tr style="${rowStyle} border-bottom: 1px solid #e2e8f0;">
+    return `<tr style="${rowStyle}">
               <td style="padding: 0.75rem 0.5rem;">
-                <div style="${nameStyle}">${s.name}${isRetired ? ` <span style="font-size:0.7rem; background:#cbd5e1; color:#475569; padding:1px 4px; border-radius:3px; margin-left:4px;">${leaveMonthStr}退会</span>` : ''}</div>
+                <div style="${nameStyle}">${s.name}${isRetired ? ` <span style="font-size:0.7rem; background:#cbd5e1; color:#475569; padding:1px 4px; border-radius:3px; margin-left:4px;">${leaveMonthStr}退会</span>` : ''}${s.isNewJoiner && !isRetired ? ' <span style="font-size:0.7rem; background:#fde68a; color:#92400e; padding:1px 4px; border-radius:3px; margin-left:4px;">新入会</span>' : ''}</div>
                 <div style="font-size:0.75rem; color:inherit; opacity: 0.8;">${s.aff || '-'}</div>
               </td>
               <td style="padding: 0.75rem 0; opacity: ${isRetired ? '0.7' : '1'};">${s.count} / ${s.total}</td>
