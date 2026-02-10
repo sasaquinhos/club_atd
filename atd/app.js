@@ -51,6 +51,7 @@ async function init() {
 
   if (hasLocalData) {
     renderAllWithPeriod();
+    setLoading(false); // Hide loading immediately if we have cached data
   } else {
     // If no local data, we must show loading and wait
     setLoading(true);
@@ -175,8 +176,17 @@ function loadFromLocal() {
     const savedData = localStorage.getItem(STORAGE_KEY);
     if (savedData) {
       const parsed = JSON.parse(savedData);
-      state.periods = parsed.periods || [];
-      state.members = parsed.members || [];
+      // Migration: convert old property names to lowercase
+      state.periods = (parsed.periods || []).map(p => ({
+        ...p,
+        startdate: p.startdate || p.startDate,
+        enddate: p.enddate || p.endDate
+      }));
+      state.members = (parsed.members || []).map(m => ({
+        ...m,
+        joinmonth: m.joinmonth || m.joinMonth,
+        leavemonth: m.leavemonth || m.leaveMonth
+      }));
       state.events = parsed.events || [];
       state.attendance = parsed.attendance || {};
       return true;
