@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8">
+  <title>projectC - サッカー同好会出欠管理</title>
+  <link rel="stylesheet" href="atd/style.css">
+</head>
+
+<body>
+  <div id="loading-overlay">読み込み中...</div>
+
+  <div class="container">
+    <header>
+      <h1>サッカー同好会 出欠管理</h1>
+    </header>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('registration')">出欠登録</button>
+      <button class="tab-btn" onclick="switchTab('status')">出席状況</button>
+      <button class="tab-btn" onclick="switchTab('admin')">管理者</button>
+    </div>
+
+    <!-- Registration Tab -->
+    <div id="registration" class="tab-content active">
+      <div class="card">
+        <div class="form-group">
+          <label for="period-select">1. 期間を選択</label>
+          <select id="period-select"></select>
+        </div>
+        <div class="form-group">
+          <label for="event-select">2. イベントを選択</label>
+          <select id="event-select" disabled>
+            <option value="">-- 先に期間を選択してください --</option>
+          </select>
+        </div>
+        <div class="form-group" id="member-select-container" style="display:none;">
+          <label for="member-select">3. 氏名を選択</label>
+          <select id="member-select"></select>
+        </div>
+      </div>
+
+      <div id="registration-input-area" style="display:none;">
+        <!-- Specific event attendance form rendered here -->
+      </div>
+      <div id="event-summary-area" class="item-list" style="display:none; margin-top: 2rem;">
+        <!-- Attendance summary for the selected event -->
+      </div>
+    </div>
+
+    <!-- Status Tab -->
+    <div id="status" class="tab-content">
+      <div class="card">
+        <div class="form-group">
+          <label for="status-period-select">期間を選択</label>
+          <select id="status-period-select"></select>
+        </div>
+      </div>
+      <div id="status-list-area">
+        <!-- Attendance rate table rendered here -->
+      </div>
+    </div>
+
+    <!-- Admin Tab -->
+    <div id="admin" class="tab-content">
+      <!-- Password Prompt -->
+      <div id="admin-auth-area" class="card">
+        <h3>管理者ログイン</h3>
+        <p style="margin-bottom: 1rem; font-size: 0.9rem; color: #666;">このセクションを表示するにはパスワードが必要です。</p>
+        <div class="form-group">
+          <input type="password" id="admin-password" placeholder="パスワードを入力" style="width: 100%; max-width: 300px;">
+        </div>
+        <button class="btn" onclick="checkAdminPassword()">ログイン</button>
+      </div>
+
+      <!-- Admin Content (Hidden by default) -->
+      <div id="admin-content" style="display: none;">
+        <!-- Period Master -->
+        <div class="card">
+          <div class="item-header">
+            <h3>期間管理</h3>
+          </div>
+          <form id="add-period-form" style="margin-bottom: 1.5rem;">
+            <div class="form-group">
+              <label>期間名を追加</label>
+              <input type="text" id="period-name" required placeholder="例：2024年度 前期">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>開始日</label>
+                <input type="date" id="period-start" required>
+              </div>
+              <div class="form-group">
+                <label>終了日</label>
+                <input type="date" id="period-end" required>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-secondary">新規期間を追加</button>
+          </form>
+          <hr>
+          <div class="form-group">
+            <label>期間を編集・削除</label>
+            <div class="inline-form">
+              <select id="admin-period-list-select"></select>
+            </div>
+            <div class="item-actions">
+              <button class="btn btn-sm" onclick="handleAdminAction('period', 'edit')">選択した期間を編集</button>
+              <button class="btn btn-danger btn-sm" onclick="handleAdminAction('period', 'delete')">削除</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Event Master -->
+        <div class="card">
+          <div class="item-header">
+            <h3>イベント管理</h3>
+          </div>
+          <form id="add-event-form" style="margin-bottom: 1.5rem;">
+            <div class="form-group">
+              <label>所属期間</label>
+              <select id="event-period-id" required></select>
+            </div>
+            <div class="form-group">
+              <label>タイトル</label>
+              <input type="text" id="event-title" required placeholder="練習試合 vs 〇〇">
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>日付</label>
+                <input type="date" id="event-date" required>
+              </div>
+              <div class="form-group">
+                <label>時間</label>
+                <input type="time" id="event-time" required>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>場所</label>
+              <input type="text" id="event-location" required placeholder="〇〇グラウンド">
+            </div>
+            <div class="form-group">
+              <label>メモ (任意)</label>
+              <textarea id="event-note" rows="2"></textarea>
+            </div>
+            <button type="submit" class="btn">新規イベントを作成</button>
+          </form>
+          <hr>
+          <div class="form-group">
+            <label>イベントを編集・削除</label>
+            <div class="inline-form">
+              <select id="admin-event-list-select"></select>
+            </div>
+            <div class="item-actions">
+              <button class="btn btn-sm" onclick="handleAdminAction('event', 'edit')">選択したイベントを編集</button>
+              <button class="btn btn-danger btn-sm" onclick="handleAdminAction('event', 'delete')">削除</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Member Master -->
+        <div class="card">
+          <div class="item-header">
+            <h3>メンバー管理</h3>
+          </div>
+          <form id="add-member-form" class="inline-form" style="margin-bottom: 1.5rem;">
+            <input type="text" id="member-name" required placeholder="名前">
+            <input type="text" id="member-affiliation" placeholder="所属(任意)">
+            <button type="submit" class="btn btn-secondary" style="width: auto;">新規追加</button>
+          </form>
+          <hr>
+          <div class="form-group">
+            <label>メンバーを編集・削除</label>
+            <div class="inline-form">
+              <select id="admin-member-list-select"></select>
+            </div>
+            <div class="item-actions">
+              <button class="btn btn-sm" onclick="handleAdminAction('member', 'edit')">選択したメンバーを編集</button>
+              <button class="btn btn-danger btn-sm" onclick="handleAdminAction('member', 'delete')">削除</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal">
+      <div class="modal-content">
+        <div class="item-header">
+          <h3 id="modal-title">編集</h3>
+          <button class="btn btn-sm" onclick="closeModal()">×</button>
+        </div>
+        <form id="edit-form">
+          <div id="edit-fields-container">
+            <!-- Dynamic fields rendered here -->
+          </div>
+          <div class="mt-1" style="display:flex; gap:0.5rem; justify-content:flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+            <button type="submit" class="btn">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="atd/app.js"></script>
+</body>
+
+</html>
