@@ -77,6 +77,14 @@ async function init() {
       await saveEditMaster();
     };
   }
+
+  // Admin Password Enter Key
+  const adminPwdInput = document.getElementById('admin-password');
+  if (adminPwdInput) {
+    adminPwdInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') checkAdminPassword();
+    });
+  }
 }
 
 function renderAllWithPeriod() {
@@ -223,6 +231,10 @@ function renderAdminAccess() {
   } else {
     authArea.style.display = 'block';
     adminContent.style.display = 'none';
+    const passwordInput = document.getElementById('admin-password');
+    if (passwordInput) {
+      setTimeout(() => passwordInput.focus(), 100);
+    }
   }
 }
 
