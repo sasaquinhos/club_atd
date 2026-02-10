@@ -295,16 +295,55 @@ hr {
 
 @media (max-width: 480px) {
   .container {
-    padding: 1rem;
+    padding: 1rem 0.75rem;
+  }
+
+  header {
+    margin-bottom: 1.5rem;
   }
 
   h1 {
-    font-size: 1.5rem;
+    font-size: 1.4rem;
+  }
+
+  .tabs {
+    padding: 2px;
+  }
+
+  .tab-btn {
+    padding: 0.6rem 0.4rem;
+    font-size: 0.85rem;
+  }
+
+  .card {
+    padding: 1rem;
+    margin-bottom: 1rem;
   }
 
   .form-row {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  input,
+  select,
+  textarea,
+  .btn {
+    font-size: 16px;
+    /* Prevent auto-zoom on iOS */
+    padding: 0.75rem;
+  }
+
+  .summary-grid {
+    gap: 0.4rem;
+  }
+
+  .summary-item {
+    padding: 0.5rem 0.2rem;
+  }
+
+  .summary-count {
+    font-size: 1.1rem;
   }
 }
 
