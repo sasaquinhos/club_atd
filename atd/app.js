@@ -494,7 +494,8 @@ function renderStatusUI() {
         if (att && (att.status === '出席' || att.status === '見学')) count++;
       });
     }
-    return { name: m.name, aff: m.affiliation, count, total, rate: total > 0 ? ((count / total) * 100).toFixed(1) : "0.0" };
+    const isLeaver = !!m.leavemonth;
+    return { name: m.name, aff: m.affiliation, count, total, rate: total > 0 ? ((count / total) * 100).toFixed(1) : "0.0", isLeaver, m };
   }).sort((a, b) => b.rate - a.rate);
 
   statusListArea.innerHTML = `<div class="card">
@@ -503,7 +504,22 @@ function renderStatusUI() {
       <table style="width:100%; border-collapse: collapse; font-size: 0.9rem;">
         <thead><tr style="border-bottom: 2px solid #e2e8f0; text-align: left;"><th style="padding: 0.5rem 0;">名前</th><th style="padding: 0.5rem 0;">出席/母数</th><th style="padding: 0.5rem 0; text-align: right;">率 (%)</th></tr></thead>
         <tbody>
-          ${memberStats.map(s => `<tr style="border-bottom: 1px solid #f1f5f9;"><td style="padding: 0.75rem 0;"><div style="font-weight:bold;">${s.name}</div><div style="font-size:0.75rem; color:#666;">${s.aff || '-'}</div></td><td style="padding: 0.75rem 0;">${s.count} / ${s.total}</td><td style="padding: 0.75rem 0; text-align: right; font-weight:bold; color:var(--primary); font-size:1.1rem;">${s.rate}%</td></tr>`).join('')}
+          ${memberStats.map(s => {
+    // Gray out if they have a leavemonth set (considered a "leaver")
+    const isInactive = s.isLeaver;
+    const rowStyle = isInactive ? 'background-color: #f8fafc; color: #94a3b8;' : 'border-bottom: 1px solid #f1f5f9;';
+    const nameStyle = isInactive ? 'font-weight:normal; color: #94a3b8;' : 'font-weight:bold; color: var(--text-main);';
+    const rateStyle = isInactive ? 'color: #94a3b8;' : 'color:var(--primary);';
+
+    return `<tr style="${rowStyle} border-bottom: 1px solid #e2e8f0;">
+              <td style="padding: 0.75rem 0.5rem;">
+                <div style="${nameStyle}">${s.name}${isInactive ? ` <span style="font-size:0.7rem; background:#e2e8f0; padding:1px 4px; border-radius:3px; color:#64748b;">${s.m.leavemonth}退会</span>` : ''}</div>
+                <div style="font-size:0.75rem; color:inherit;">${s.aff || '-'}</div>
+              </td>
+              <td style="padding: 0.75rem 0;">${s.count} / ${s.total}</td>
+              <td style="padding: 0.75rem 0.5rem; text-align: right; ${nameStyle} ${rateStyle} font-size:1.1rem;">${s.rate}%</td>
+            </tr>`;
+  }).join('')}
         </tbody>
       </table>
     </div>`;
