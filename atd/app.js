@@ -1,5 +1,5 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycbxJiCwGptPwPunNxJ1WZqBwgeRBCHCyTtZabXAVKRsA8wuLLd5mcHw2AZrXpCyhxmSqGA/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyBaXA-MxwY4RFUfr_I5xmspIjOjzsaVwa3jTmn8O1ASx-3qULxYPCK01xPWjj6MrPQfg/exec';
 
 // App State
 const state = {
@@ -334,7 +334,8 @@ function renderAttendanceInput(eventIds) {
     const att = state.attendance[key] || { status: '', comment: '' };
     return `<div class="card" style="border-left: 5px solid var(--primary); margin-bottom: 1rem;">
         <h3>${event.title} の出欠回答</h3>
-        <div class="item-meta" style="margin-bottom: 1rem;">${formatDate(event.date)} ${event.time} @ ${event.location}</div>
+        <div class="item-meta" style="margin-bottom: 0.5rem;">${formatDate(event.date)} ${event.time} @ ${event.location}</div>
+        ${event.note ? `<div style="font-size: 0.85rem; background: #f0fdf4; padding: 0.5rem; border-radius: 6px; margin-bottom: 1rem; border-left: 3px solid var(--primary-dark); color: var(--text-main); white-space: pre-wrap;">${event.note}</div>` : ''}
         <div class="form-group">
           <label>ステータス</label>
           <select onchange="saveAttendanceLocal('${eventId}', '${memberId}', this.value, '${eventId}-comment')">
