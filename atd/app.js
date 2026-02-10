@@ -1,10 +1,10 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycbyBaXA-MxwY4RFUfr_I5xmspIjOjzsaVwa3jTmn8O1ASx-3qULxYPCK01xPWjj6MrPQfg/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbwC8S1HUoQ3iO-U10mR3P1Bj5JCGtnonL816w3w_5o72xI51it8zQVwzkarvAnRhJxUww/exec';
 
 // App State
 const state = {
-  periods: [], // { id, name, startDate, endDate }
-  members: [], // { id, name, affiliation, joinMonth, leaveMonth }
+  periods: [], // { id, name, startdate, enddate }
+  members: [], // { id, name, affiliation, joinmonth, leavemonth }
   events: [],  // { id, title, date, time, location, note }
   attendance: {}, // { "eventId_memberId": { status, comment } }
   isAdminAuthenticated: false,
@@ -81,20 +81,23 @@ async function init() {
 
 function renderAllWithPeriod() {
   const today = getTodayStr();
-  const curPeriod = state.periods.find(p => today >= p.startDate && today <= p.endDate);
+  const curPeriod = state.periods.find(p => today >= p.startdate && today <= p.enddate);
 
   renderRegistrationUI();
   renderStatusUI();
   renderAdminUI();
 
   if (curPeriod) {
-    if (periodSelect && !periodSelect.value) periodSelect.value = curPeriod.id;
+    if (periodSelect && !periodSelect.value) {
+      periodSelect.value = curPeriod.id;
+      updateEventSelect(curPeriod.id);
+    }
     if (statusPeriodSelect && !statusPeriodSelect.value) {
       statusPeriodSelect.value = curPeriod.id;
       renderStatusUI();
     }
 
-    const periodEvents = state.events.filter(e => e.date >= curPeriod.startDate && e.date <= curPeriod.endDate);
+    const periodEvents = state.events.filter(e => e.date >= curPeriod.startdate && e.date <= curPeriod.enddate);
     if (periodEvents.length > 0 && !eventSelect.value) {
       let targetDate = '';
       const futureEvents = periodEvents.filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
@@ -106,7 +109,6 @@ function renderAllWithPeriod() {
 
       if (targetDate) {
         const targetEvents = periodEvents.filter(e => e.date === targetDate);
-        updateEventSelect(curPeriod.id);
         if (targetEvents.length === 1) eventSelect.value = targetEvents[0].id;
         renderAutoDetectedEvents(targetEvents);
       }
@@ -521,11 +523,13 @@ function editMaster(type, id) {
   } else if (type === 'event') {
     const e = state.events.find(x => String(x.id) === String(id));
     title = "イベントを編集";
+    // Ensure time matches HH:mm for the input field
+    const timeVal = e.time ? e.time.substring(0, 5) : "";
     fieldsHtml = `
       <div class="form-group"><label>タイトル</label><input type="text" id="edit-event-title" value="${e.title}" required></div>
       <div class="form-row">
         <div class="form-group"><label>日付</label><input type="date" id="edit-event-date" value="${e.date}" required></div>
-        <div class="form-group"><label>時間</label><input type="time" id="edit-event-time" value="${e.time}" required></div>
+        <div class="form-group"><label>時間</label><input type="time" id="edit-event-time" value="${timeVal}" required></div>
       </div>
       <div class="form-group"><label>場所</label><input type="text" id="edit-event-loc" value="${e.location}" required></div>
       <div class="form-group"><label>メモ (任意)</label><textarea id="edit-event-note" rows="2">${e.note || ''}</textarea></div>`;
@@ -608,7 +612,7 @@ if (addPeriodForm) {
     setLoading(true);
     const res = await apiCall('add_period', payload);
     if (res.result === 'success') {
-      state.periods.push({ id, name: payload.name, startDate: payload.startDate, endDate: payload.endDate });
+      state.periods.push({ id, name: payload.name, startdate: payload.startDate, enddate: payload.endDate });
       saveToLocal();
       addPeriodForm.reset();
       renderAll();
