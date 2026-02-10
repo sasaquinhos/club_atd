@@ -1,5 +1,5 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycbwC8S1HUoQ3iO-U10mR3P1Bj5JCGtnonL816w3w_5o72xI51it8zQVwzkarvAnRhJxUww/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyiPFdoNWgtNQRmTbxxvL9svVkllQEltDW1NoDFkjmcu4YvnhoOSYtKtPfp10XaUJF0Xg/exec';
 
 // App State
 const state = {
@@ -510,7 +510,8 @@ function renderStatusUI() {
           ${memberStats.map(s => {
     // Determine if they are "retired" (left before today or the period ends)
     const todayMonth = getTodayStr().substring(0, 7);
-    const isRetired = s.isLeaver && s.m.leavemonth.substring(0, 7) < todayMonth;
+    const leaveMonthStr = s.m.leavemonth ? String(s.m.leavemonth).substring(0, 7) : "";
+    const isRetired = s.isLeaver && leaveMonthStr < todayMonth;
 
     const rowStyle = isRetired ? 'background-color: #f1f5f9; color: #64748b;' : 'border-bottom: 1px solid #f1f5f9;';
     const nameStyle = isRetired ? 'font-weight:normal; color: #475569;' : 'font-weight:bold; color: var(--text-main);';
@@ -518,7 +519,7 @@ function renderStatusUI() {
 
     return `<tr style="${rowStyle} border-bottom: 1px solid #e2e8f0;">
               <td style="padding: 0.75rem 0.5rem;">
-                <div style="${nameStyle}">${s.name}${isRetired ? ` <span style="font-size:0.7rem; background:#cbd5e1; color:#475569; padding:1px 4px; border-radius:3px; margin-left:4px;">${s.m.leavemonth.substring(0, 7)}退会</span>` : ''}</div>
+                <div style="${nameStyle}">${s.name}${isRetired ? ` <span style="font-size:0.7rem; background:#cbd5e1; color:#475569; padding:1px 4px; border-radius:3px; margin-left:4px;">${leaveMonthStr}退会</span>` : ''}</div>
                 <div style="font-size:0.75rem; color:inherit; opacity: 0.8;">${s.aff || '-'}</div>
               </td>
               <td style="padding: 0.75rem 0; opacity: ${isRetired ? '0.7' : '1'};">${s.count} / ${s.total}</td>
@@ -580,12 +581,15 @@ function editMaster(type, id) {
   } else if (type === 'member') {
     const m = state.members.find(x => String(x.id) === String(id));
     title = "メンバーを編集";
+    // Ensure month values are exactly YYYY-MM for the input fields
+    const joinVal = m.joinmonth ? String(m.joinmonth).substring(0, 7) : "";
+    const leaveVal = m.leavemonth ? String(m.leavemonth).substring(0, 7) : "";
     fieldsHtml = `
       <div class="form-group"><label>名前</label><input type="text" id="edit-member-name" value="${m.name}" required></div>
       <div class="form-group"><label>所属(任意)</label><input type="text" id="edit-member-aff" value="${m.affiliation || ''}"></div>
       <div class="form-row">
-        <div class="form-group"><label>入会月 (YYYY-MM)</label><input type="month" id="edit-member-join" value="${m.joinmonth || ''}"></div>
-        <div class="form-group"><label>退会月 (YYYY-MM)</label><input type="month" id="edit-member-leave" value="${m.leavemonth || ''}"></div>
+        <div class="form-group"><label>入会月 (YYYY-MM)</label><input type="month" id="edit-member-join" value="${joinVal}"></div>
+        <div class="form-group"><label>退会月 (YYYY-MM)</label><input type="month" id="edit-member-leave" value="${leaveVal}"></div>
       </div>`;
   } else if (type === 'event') {
     const e = state.events.find(x => String(x.id) === String(id));
