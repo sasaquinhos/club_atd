@@ -581,8 +581,11 @@ function renderAdminUI() {
   }
   if (adminEventSelect) {
     adminEventSelect.innerHTML = '<option value="">-- イベントを選択 --</option>' +
-      state.events.sort((a, b) => new Date(b.date) - new Date(a.date))
-        .map(e => `<option value="${e.id}">${formatDate(e.date)} ${e.title} @ ${e.location}</option>`).join('');
+      [...state.events].sort((a, b) => {
+        if (a.date !== b.date) return b.date.localeCompare(a.date);
+        return (b.time || "").localeCompare(a.time || "");
+      })
+        .map(e => `<option value="${e.id}">${formatDate(e.date)} ${e.time || ''} ${e.title} @ ${e.location}</option>`).join('');
   }
 }
 
