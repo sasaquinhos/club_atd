@@ -404,3 +404,38 @@ td {
   max-height: 90vh;
   overflow-y: auto;
 }
+
+/* Photo Album Styles */
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.photo-item {
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #e2e8f0;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.photo-item:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 480px) {
+  .photo-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.25rem;
+  }
+}
