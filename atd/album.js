@@ -1,5 +1,5 @@
 // GAS Web App URL (デプロイ後に取得したURLをここに記載してください)
-const GAS_URL = 'YOUR_GAS_WEB_APP_URL_HERE';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbySBpd4OovO7e3G20jf0VUHUmHxm4QHX3R0EYx_oJMxPfWeM-vbS2aw3g_GmWPVLrNYMA/exec';
 
 document.addEventListener('DOMContentLoaded', () => {
     loadEventNames();
