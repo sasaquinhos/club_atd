@@ -80,7 +80,8 @@ async function handleUpload() {
     for (let i = 0; i < files.length; i++) {
         try {
             const file = files[i];
-            const base64Data = await readFileAsBase64(file);
+            // 圧縮処理を追加 (Max 1920px, Quality 0.8)
+            const base64Data = await compressImage(file, 1920, 0.8);
 
             const response = await fetch(GAS_URL, {
                 method: 'POST',
@@ -165,8 +166,52 @@ function readFileAsBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
+        reader.onerror = error => reject(error);
         reader.readAsDataURL(file);
+    });
+}
+
+/**
+ * 画像を圧縮してBase64で返す
+ * @param {File} file 
+ * @param {number} maxWidth 最大幅/高さ
+ * @param {number} quality JPEG画質 (0.0 - 1.0)
+ */
+function compressImage(file, maxWidth, quality) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = event => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height = Math.round(height * (maxWidth / width));
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxWidth) {
+                        width = Math.round(width * (maxWidth / height));
+                        height = maxWidth;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // canvas.toDataURL の第2引数で画質指定(JPEGのみ有効)
+                resolve(canvas.toDataURL('image/jpeg', quality));
+            };
+            img.onerror = error => reject(error);
+        };
+        reader.onerror = error => reject(error);
     });
 }
 
