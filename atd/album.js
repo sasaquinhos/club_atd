@@ -1,5 +1,5 @@
 // GAS Web App URL (デプロイ後に取得したURLをここに記載してください)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbySBpd4OovO7e3G20jf0VUHUmHxm4QHX3R0EYx_oJMxPfWeM-vbS2aw3g_GmWPVLrNYMA/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycby6Aq-VLm_WeknKcZcEQ-ey2CnKnPjpIg-ls53mWblO74i73utEbnaEervzS4jgtT0YOw/exec';
 
 document.addEventListener('DOMContentLoaded', () => {
     loadEventNames();
@@ -35,10 +35,22 @@ async function loadEventNames() {
         const viewSelect = document.getElementById('view-event-select');
         const uploadSelect = document.getElementById('upload-event-select');
 
+        // data.events は { name: "...", date: "..." } の配列になっているはず
         let options = '<option value="">-- イベントを選択 --</option>';
-        data.eventNames.forEach(name => {
-            options += `<option value="${name}">${name}</option>`;
-        });
+
+        if (data.events && Array.isArray(data.events)) {
+            data.events.forEach(event => {
+                // 表示ラベル: "2024-01-01 イベント名"
+                // 値: "イベント名" (フォルダ名として使用するため)
+                const label = `${event.date} ${event.name}`;
+                options += `<option value="${event.name}">${label}</option>`;
+            });
+        } else if (data.eventNames) {
+            // 旧APIの互換性維持（念のため）
+            data.eventNames.forEach(name => {
+                options += `<option value="${name}">${name}</option>`;
+            });
+        }
 
         viewSelect.innerHTML = options;
         uploadSelect.innerHTML = options;
@@ -63,6 +75,7 @@ async function handleUpload() {
     statusDiv.innerText = `0 / ${files.length} 枚アップロード中...`;
 
     let successCount = 0;
+    const errors = [];
 
     for (let i = 0; i < files.length; i++) {
         try {
@@ -80,19 +93,32 @@ async function handleUpload() {
             });
 
             const result = await response.json();
+            console.log('Upload result:', result); // Debug log
+
             if (result.result === 'success') {
                 successCount++;
+                statusDiv.innerText = `${i + 1} / ${files.length} 枚処理中... (成功: ${successCount})`;
+            } else {
+                console.error('Upload failed:', result);
+                const errorMsg = result.error || 'Unknown error';
+                errors.push(`${file.name}: ${errorMsg}`);
+                statusDiv.innerText = `${i + 1} / ${files.length} 枚処理中... (成功: ${successCount})\nエラー: ${errorMsg}`;
             }
-            statusDiv.innerText = `${i + 1} / ${files.length} 枚アップロード中...`;
         } catch (error) {
             console.error('Upload error:', error);
+            errors.push(`${file.name}: ${error.message}`);
+            statusDiv.innerText = `${i + 1} / ${files.length} 枚処理中... (成功: ${successCount})\n通信エラー: ${error.message}`;
         }
     }
 
     showLoading(false);
-    alert(`${successCount} 枚の写真をアップロードしました。`);
-    statusDiv.innerText = '';
-    fileInput.value = '';
+
+    if (successCount === files.length) {
+        alert(`${successCount} 枚の写真をアップロードしました。`);
+    } else {
+        const errorSummary = errors.join('\n');
+        alert(`${successCount} / ${files.length} 枚のアップロードに成功しました。\n\n【失敗したファイル】\n${errorSummary}`);
+    }
 
     // 閲覧タブのリロード（同じイベントを選択していた場合）
     if (document.getElementById('view-event-select').value === eventName) {
@@ -115,10 +141,17 @@ async function loadImages(eventName) {
 
         grid.innerHTML = '';
         data.images.forEach(img => {
+            // URL変換: uc?id=... -> thumbnail?sz=w1000&id=...
+            // これにより、既存の画像も新しい形式で表示されるようになります
+            let displayUrl = img.url;
+            if (displayUrl.includes('drive.google.com/uc?id=')) {
+                displayUrl = displayUrl.replace('drive.google.com/uc?id=', 'drive.google.com/thumbnail?sz=w1000&id=');
+            }
+
             const item = document.createElement('div');
             item.className = 'photo-item';
             item.innerHTML = `
-                <img src="${img.url}" alt="${img.fileName}" onclick="openPhotoModal('${img.url}')">
+                <img src="${displayUrl}" alt="${img.fileName}" onclick="openPhotoModal('${displayUrl}')" onerror="this.src='https://placehold.co/600x400?text=Load+Error'">
             `;
             grid.appendChild(item);
         });
