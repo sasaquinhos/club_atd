@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>アルバム - サッカー同好会</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="loading-overlay" style="display:none;">処理中...</div>
+
+    <div class="container">
+        <header>
+            <h1>📸 アルバム</h1>
+            <div style="margin-top: 1rem;">
+                <a href="../index.html" class="btn btn-secondary btn-sm"
+                    style="display: inline-block; width: auto; text-decoration: none;">🏠 戻る</a>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <button id="tab-view-btn" class="tab-btn active" onclick="switchAlbumTab('view')">写真閲覧</button>
+            <button id="tab-upload-btn" class="tab-btn" onclick="switchAlbumTab('upload')">写真アップロード</button>
+        </div>
+
+        <!-- View Tab -->
+        <div id="album-view" class="tab-content active">
+            <div class="card">
+                <div class="form-group">
+                    <label for="view-event-select">イベントを選択</label>
+                    <select id="view-event-select">
+                        <option value="">-- 読み込み中... --</option>
+                    </select>
+                </div>
+            </div>
+            <div id="photo-grid" class="photo-grid">
+                <!-- Photos will be rendered here -->
+            </div>
+        </div>
+
+        <!-- Upload Tab -->
+        <div id="album-upload" class="tab-content">
+            <div class="card">
+                <div class="form-group">
+                    <label for="upload-event-select">アップロード先イベント</label>
+                    <select id="upload-event-select">
+                        <option value="">-- 読み込み中... --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="photo-input">写真を選択 (複数枚可)</label>
+                    <input type="file" id="photo-input" accept="image/*" multiple>
+                </div>
+                <button id="upload-btn" class="btn">アップロード開始</button>
+            </div>
+            <div id="upload-status" class="item-meta" style="margin-top: 1rem; text-align: center;"></div>
+        </div>
+
+        <!-- Fullscreen Modal -->
+        <div id="photo-modal" class="modal">
+            <div class="modal-content"
+                style="max-width: 95vw; padding: 0.5rem; background: transparent; box-shadow: none;">
+                <div style="text-align: right; margin-bottom: 0.5rem;">
+                    <button class="btn btn-sm" onclick="closePhotoModal()"
+                        style="width: auto; background: rgba(0,0,0,0.5); color: #fff;">×</button>
+                </div>
+                <img id="modal-img" src=""
+                    style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+            </div>
+        </div>
+    </div>
+
+    <script src="album.js"></script>
+</body>
+
+</html>
