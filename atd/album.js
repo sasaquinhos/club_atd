@@ -41,9 +41,10 @@ async function loadEventNames() {
         if (data.events && Array.isArray(data.events)) {
             data.events.forEach(event => {
                 // 表示ラベル: "2024-01-01 イベント名"
-                // 値: "イベント名" (フォルダ名として使用するため)
+                // 値: "2024-01-01_イベント名" (フォルダ名・識別子として使用)
                 const label = `${event.date} ${event.name}`;
-                options += `<option value="${event.name}">${label}</option>`;
+                const value = `${event.date}_${event.name}`;
+                options += `<option value="${value}">${label}</option>`;
             });
         } else if (data.eventNames) {
             // 旧APIの互換性維持（念のため）
