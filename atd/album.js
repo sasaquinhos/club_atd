@@ -122,6 +122,9 @@ async function handleUpload() {
         alert(`${successCount} / ${files.length} 枚のアップロードに成功しました。\n\n【失敗したファイル】\n${errorSummary}`);
     }
 
+    // ファイル選択をクリア
+    fileInput.value = '';
+
     // 閲覧タブのリロード（同じイベントを選択していた場合）
     if (document.getElementById('view-event-select').value === eventName) {
         loadImages(eventName);
