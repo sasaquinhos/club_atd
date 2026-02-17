@@ -1,5 +1,5 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycbwx_QRZNISygWp-lkNMfxMTcbl7AAzfHAkBG_UpeXhkY6b3usUikjdOIa0TeBP9qTUoFQ/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycby2JECc7ATwgnof2MiQTK3uPuUgf5TBPC-tA_qzSctM8RDX_l1qgvE53sTvmfibjLnPDg/exec';
 
 // App State
 const state = {
