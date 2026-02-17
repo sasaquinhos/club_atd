@@ -1,5 +1,5 @@
 // GAS Web App URL (デプロイ後に取得したURLをここに記載してください)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbz7qH6Q_04D0jS7D6N9_7LWOrlUJpDwrG3nXx0sZnX8w1LZZ63ZpC_zj4Y0KdL2lPO7tQ/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycby2JECc7ATwgnof2MiQTK3uPuUgf5TBPC-tA_qzSctM8RDX_l1qgvE53sTvmfibjLnPDg/exec';
 
 document.addEventListener('DOMContentLoaded', () => {
     loadEventNames();
@@ -155,8 +155,10 @@ async function loadImages(eventName) {
 
             const item = document.createElement('div');
             item.className = 'photo-item';
+            // photoIdとして、とりあえずfileNameを使用（一意であることを期待）
+            const photoId = img.fileName;
             item.innerHTML = `
-                <img src="${displayUrl}" alt="${img.fileName}" onclick="openPhotoModal('${displayUrl}')" onerror="this.src='https://placehold.co/600x400?text=Load+Error'">
+                <img src="${displayUrl}" alt="${img.fileName}" onclick="openPhotoModal('${displayUrl}', '${photoId}')" onerror="this.src='https://placehold.co/600x400?text=Load+Error'">
             `;
             grid.appendChild(item);
         });
@@ -219,15 +221,110 @@ function compressImage(file, maxWidth, quality) {
     });
 }
 
-function openPhotoModal(url) {
+let currentPhotoId = null;
+
+function openPhotoModal(url, photoId) {
+    currentPhotoId = photoId;
     const modal = document.getElementById('photo-modal');
     const modalImg = document.getElementById('modal-img');
     modalImg.src = url;
     modal.classList.add('active');
+
+    // コメント入力欄をクリア
+    document.getElementById('comment-text').value = '';
+
+    // コメント読み込み
+    loadComments(photoId);
 }
 
 function closePhotoModal() {
     document.getElementById('photo-modal').classList.remove('active');
+    currentPhotoId = null;
+}
+
+async function loadComments(photoId) {
+    const commentList = document.getElementById('comment-list');
+    commentList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 1rem;">読み込み中...</p>';
+
+    try {
+        const response = await fetch(`${GAS_URL}?action=getAlbumComments&photoId=${encodeURIComponent(photoId)}`);
+        const data = await response.json();
+
+        if (!data.comments || data.comments.length === 0) {
+            commentList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 1rem;">まだコメントはありません。</p>';
+            return;
+        }
+
+        // コメントを表示（古い順：GAS側でソートせずにそのまま表示）
+        commentList.innerHTML = data.comments.map(c => `
+            <div class="comment-item">
+                <div class="comment-header">
+                    <span class="comment-author">${escapeHtml(c.username)}</span>
+                    <span class="comment-date">${c.timestamp}</span>
+                </div>
+                <div class="comment-text">${escapeHtml(c.commenttext)}</div>
+            </div>
+        `).join('');
+
+        // 最下部までスクロール
+        commentList.scrollTop = commentList.scrollHeight;
+
+    } catch (error) {
+        console.error('Error loading comments:', error);
+        commentList.innerHTML = '<p style="color: red; text-align: center; padding: 1rem;">読み込みに失敗しました。</p>';
+    }
+}
+
+async function saveComment() {
+    const userField = document.getElementById('comment-user');
+    const textField = document.getElementById('comment-text');
+    const userName = userField.value.trim();
+    const commentText = textField.value.trim();
+
+    if (!userName || !commentText || !currentPhotoId) {
+        alert('名前とコメントを入力してください。');
+        return;
+    }
+
+    try {
+        showLoading(true);
+        const response = await fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'saveAlbumComment',
+                photoId: currentPhotoId,
+                userName: userName,
+                commentText: commentText
+            })
+        });
+
+        const result = await response.json();
+        if (result.result === 'success') {
+            textField.value = ''; // コメント欄のみクリア
+            await loadComments(currentPhotoId); // リロード
+        } else {
+            alert('保存に失敗しました: ' + (result.error || '不明なエラー'));
+        }
+    } catch (error) {
+        console.error('Error saving comment:', error);
+        alert('通信エラーが発生しました。');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return str.replace(/[&'`"<>]/g, function (match) {
+        return {
+            '&': '&amp;',
+            "'": '&#39;',
+            '`': '&#96;',
+            '"': '&quot;',
+            '<': '&lt;',
+            '>': '&gt;',
+        }[match]
+    });
 }
 
 function showLoading(show) {
