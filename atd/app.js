@@ -1,5 +1,5 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycby2JECc7ATwgnof2MiQTK3uPuUgf5TBPC-tA_qzSctM8RDX_l1qgvE53sTvmfibjLnPDg/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbw9Tc2ZffUzPxA7iQnBVH_7e7xBHA7KLCjabYiIan--_iNnNUOQkpnEQYvdG2TiAFWr9g/exec';
 
 // App State
 const state = {
@@ -369,6 +369,7 @@ function renderAttendanceInput(eventIds) {
 
     const key = `${eventId}_${memberId}`;
     const att = state.attendance[key] || { status: '', comment: '' };
+    const deadlineStr = event.deadlinedate ? `※ 回答締め切り：${event.deadlinedate.replace(/-/g, '/')} ${event.deadlinetime || '00:00'}` : '';
 
     if (isPast) {
       return ''; // Hide input card completely for past events
@@ -376,6 +377,7 @@ function renderAttendanceInput(eventIds) {
 
     return `<div class="card" style="border-left: 5px solid var(--primary); margin-bottom: 1rem;">
         <h3>${event.title} の出欠回答</h3>
+        ${deadlineStr ? `<div style="color: #ef4444; font-weight: bold; font-size: 0.9rem; margin-bottom: 0.25rem;">${deadlineStr}</div>` : ''}
         <div class="item-meta" style="margin-bottom: 0.5rem;">${formatDate(event.date)} ${event.time} @ ${event.location}</div>
         ${event.note ? `<div style="font-size: 0.85rem; background: #f0fdf4; padding: 0.5rem; border-radius: 6px; margin-bottom: 1rem; border-left: 3px solid var(--primary-dark); color: var(--text-main); white-space: pre-wrap;">${event.note}</div>` : ''}
         <div class="form-group">
@@ -639,6 +641,10 @@ function editMaster(type, id) {
         <div class="form-group"><label>日付</label><input type="date" id="edit-event-date" value="${e.date}" required></div>
         <div class="form-group"><label>時間</label><input type="time" id="edit-event-time" value="${timeVal}" required></div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label>回答締め切り日 (任意)</label><input type="date" id="edit-event-deadline-date" value="${e.deadlinedate || ''}"></div>
+        <div class="form-group"><label>締め切り時間 (任意)</label><input type="time" id="edit-event-deadline-time" value="${e.deadlinetime || ''}"></div>
+      </div>
       <div class="form-group"><label>場所</label><input type="text" id="edit-event-loc" value="${e.location}" required></div>
       <div class="form-group"><label>メモ (任意)</label><textarea id="edit-event-note" rows="2">${e.note || ''}</textarea></div>`;
   }
@@ -673,7 +679,9 @@ async function saveEditMaster() {
     e.time = document.getElementById('edit-event-time').value;
     e.location = document.getElementById('edit-event-loc').value;
     e.note = document.getElementById('edit-event-note').value;
-    payload = { ...payload, title: e.title, date: e.date, time: e.time, location: e.location, note: e.note };
+    e.deadlinedate = document.getElementById('edit-event-deadline-date').value;
+    e.deadlinetime = document.getElementById('edit-event-deadline-time').value;
+    payload = { ...payload, title: e.title, date: e.date, time: e.time, location: e.location, note: e.note, deadlineDate: e.deadlinedate, deadlineTime: e.deadlinetime };
   }
 
   setLoading(true);
@@ -754,11 +762,29 @@ if (addEventForm) {
   addEventForm.onsubmit = async (e) => {
     e.preventDefault();
     const id = 'e-' + Date.now();
-    const payload = { id, title: document.getElementById('event-title').value, date: document.getElementById('event-date').value, time: document.getElementById('event-time').value, location: document.getElementById('event-location').value, note: document.getElementById('event-note').value };
+    const payload = {
+      id,
+      title: document.getElementById('event-title').value,
+      date: document.getElementById('event-date').value,
+      time: document.getElementById('event-time').value,
+      location: document.getElementById('event-location').value,
+      note: document.getElementById('event-note').value,
+      deadlineDate: document.getElementById('event-deadline-date').value,
+      deadlineTime: document.getElementById('event-deadline-time').value
+    };
     setLoading(true);
     const res = await apiCall('add_event', payload);
     if (res.result === 'success') {
-      state.events.push({ id, ...payload, date: payload.date, time: payload.time });
+      state.events.push({
+        id,
+        title: payload.title,
+        date: payload.date,
+        time: payload.time,
+        location: payload.location,
+        note: payload.note,
+        deadlinedate: payload.deadlineDate,
+        deadlinetime: payload.deadlineTime
+      });
       saveToLocal();
       addEventForm.reset();
       renderAll();
