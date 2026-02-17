@@ -58,16 +58,30 @@
             <div id="upload-status" class="item-meta" style="margin-top: 1rem; text-align: center;"></div>
         </div>
 
-        <!-- Fullscreen Modal -->
         <div id="photo-modal" class="modal">
-            <div class="modal-content"
-                style="max-width: 95vw; padding: 0.5rem; background: transparent; box-shadow: none;">
-                <div style="text-align: right; margin-bottom: 0.5rem;">
-                    <button class="btn btn-sm" onclick="closePhotoModal()"
-                        style="width: auto; background: rgba(0,0,0,0.5); color: #fff;">×</button>
+            <div class="modal-content photo-modal-content">
+                <div class="modal-header">
+                    <button class="btn-close" onclick="closePhotoModal()">×</button>
                 </div>
-                <img id="modal-img" src=""
-                    style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+                <div class="modal-body">
+                    <div class="modal-photo-container">
+                        <img id="modal-img" src="" alt="拡大写真">
+                    </div>
+                    <div class="modal-comment-container">
+                        <h3>💬 コメント</h3>
+                        <div id="comment-list" class="comment-list">
+                            <!-- コメントがここに読み込まれます -->
+                            <p class="text-muted" style="text-align: center; padding: 1rem;">読み込み中...</p>
+                        </div>
+                        <div class="comment-form">
+                            <input type="text" id="comment-user" placeholder="お名前" class="mt-1">
+                            <div class="inline-form mt-1">
+                                <input type="text" id="comment-text" placeholder="コメントを入力...">
+                                <button onclick="saveComment()" class="btn btn-sm" style="width: 60px;">送信</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
