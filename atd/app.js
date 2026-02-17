@@ -1,5 +1,5 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycbw9Tc2ZffUzPxA7iQnBVH_7e7xBHA7KLCjabYiIan--_iNnNUOQkpnEQYvdG2TiAFWr9g/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxkE3ndAUFl3CPbr6Ivc2YQex7fUWq_UEuOPdikZaA-LziWvv8yth_YTgPZfy3kPFL-Eg/exec';
 
 // App State
 const state = {
@@ -375,14 +375,15 @@ function renderAttendanceInput(eventIds) {
       return ''; // Hide input card completely for past events
     }
 
-    return `<div class="card" style="border-left: 5px solid var(--primary); margin-bottom: 1rem;">
+    return `<div class="card" style="border-left: 5px solid var(--primary); margin-bottom: 1rem; ${event.canceled ? 'background: #fef2f2;' : ''}">
         <h3>${event.title} の出欠回答</h3>
         <div class="item-meta" style="margin-bottom: 0.25rem;">${formatDate(event.date)} ${event.time} @ ${event.location}</div>
         ${deadlineStr ? `<div style="color: #ef4444; font-weight: bold; font-size: 0.9rem; margin-bottom: 0.5rem;">${deadlineStr}</div>` : ''}
+        ${event.canceled ? `<div style="color: #ef4444; font-weight: bold; background: white; padding: 0.5rem; border: 1px solid #ef4444; border-radius: 6px; margin-bottom: 1rem; text-align: center;">🚫 このイベントは中止になりました</div>` : ''}
         ${event.note ? `<div style="font-size: 0.85rem; background: #f0fdf4; padding: 0.5rem; border-radius: 6px; margin-bottom: 1rem; border-left: 3px solid var(--primary-dark); color: var(--text-main); white-space: pre-wrap;">${event.note}</div>` : ''}
         <div class="form-group">
           <label>ステータス</label>
-          <select onchange="saveAttendanceLocal('${eventId}', '${memberId}', this.value, '${eventId}-comment')">
+          <select onchange="saveAttendanceLocal('${eventId}', '${memberId}', this.value, '${eventId}-comment')" ${event.canceled ? 'disabled' : ''}>
             <option value="" ${att.status === '' ? 'selected' : ''}>-- 選択してください --</option>
             <option value="出席" ${att.status === '出席' ? 'selected' : ''}>出席</option>
             <option value="見学" ${att.status === '見学' ? 'selected' : ''}>見学</option>
@@ -392,7 +393,8 @@ function renderAttendanceInput(eventIds) {
         </div>
         <div class="form-group">
           <label>コメント (任意)</label>
-          <input type="text" id="${eventId}-comment" value="${att.comment}" placeholder="遅れて行きます、等" onblur="saveAttendanceLocal('${eventId}', '${memberId}', null, '${eventId}-comment')">
+          <input type="text" id="${eventId}-comment" value="${att.comment}" placeholder="遅れて行きます、等" 
+            onblur="saveAttendanceLocal('${eventId}', '${memberId}', null, '${eventId}-comment')" ${event.canceled ? 'disabled' : ''}>
         </div>
       </div>`;
   }).join('');
@@ -512,7 +514,7 @@ function renderStatusUI() {
     return;
   }
   const memberStats = periodActiveMembers.map(m => {
-    const memberEventsInPeriod = periodEvents.filter(e => isMemberActiveAt(m, e.date));
+    const memberEventsInPeriod = periodEvents.filter(e => isMemberActiveAt(m, e.date) && !e.canceled);
     const total = memberEventsInPeriod.length;
     let count = 0;
     if (total > 0) {
@@ -587,7 +589,7 @@ function renderAdminUI() {
         if (a.date !== b.date) return b.date.localeCompare(a.date);
         return (b.time || "").localeCompare(a.time || "");
       })
-        .map(e => `<option value="${e.id}">${formatDate(e.date)} ${e.time || ''} ${e.title} @ ${e.location}</option>`).join('');
+        .map(e => `<option value="${e.id}">${e.canceled ? '[中止] ' : ''}${formatDate(e.date)} ${e.time || ''} ${e.title} @ ${e.location}</option>`).join('');
   }
 }
 
@@ -646,6 +648,10 @@ function editMaster(type, id) {
         <div class="form-group"><label>締め切り時間 (任意)</label><input type="time" id="edit-event-deadline-time" value="${e.deadlinetime || ''}"></div>
       </div>
       <div class="form-group"><label>場所</label><input type="text" id="edit-event-loc" value="${e.location}" required></div>
+      <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+        <input type="checkbox" id="edit-event-canceled" style="width: auto; margin: 0;" ${e.canceled ? 'checked' : ''}>
+        <label for="edit-event-canceled" style="margin: 0; cursor: pointer; color: #ef4444; font-weight: bold;">このイベントを中止にする</label>
+      </div>
       <div class="form-group"><label>メモ (任意)</label><textarea id="edit-event-note" rows="2">${e.note || ''}</textarea></div>`;
   }
 
@@ -681,7 +687,8 @@ async function saveEditMaster() {
     e.note = document.getElementById('edit-event-note').value;
     e.deadlinedate = document.getElementById('edit-event-deadline-date').value;
     e.deadlinetime = document.getElementById('edit-event-deadline-time').value;
-    payload = { ...payload, title: e.title, date: e.date, time: e.time, location: e.location, note: e.note, deadlineDate: e.deadlinedate, deadlineTime: e.deadlinetime };
+    e.canceled = document.getElementById('edit-event-canceled').checked;
+    payload = { ...payload, title: e.title, date: e.date, time: e.time, location: e.location, note: e.note, deadlineDate: e.deadlinedate, deadlineTime: e.deadlinetime, canceled: e.canceled };
   }
 
   setLoading(true);
@@ -770,7 +777,8 @@ if (addEventForm) {
       location: document.getElementById('event-location').value,
       note: document.getElementById('event-note').value,
       deadlineDate: document.getElementById('event-deadline-date').value,
-      deadlineTime: document.getElementById('event-deadline-time').value
+      deadlineTime: document.getElementById('event-deadline-time').value,
+      canceled: document.getElementById('event-canceled').checked
     };
     setLoading(true);
     const res = await apiCall('add_event', payload);
@@ -783,7 +791,8 @@ if (addEventForm) {
         location: payload.location,
         note: payload.note,
         deadlinedate: payload.deadlineDate,
-        deadlinetime: payload.deadlineTime
+        deadlinetime: payload.deadlineTime,
+        canceled: payload.canceled
       });
       saveToLocal();
       addEventForm.reset();
