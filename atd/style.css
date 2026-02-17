@@ -433,6 +433,124 @@ td {
   object-fit: cover;
 }
 
+/* Enhanced Modal for Comments */
+.photo-modal-content {
+  max-width: 800px !important;
+  width: 95% !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 0.5rem 1rem;
+  display: flex;
+  justify-content: flex-end;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.btn-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: row;
+  height: 80vh;
+}
+
+.modal-photo-container {
+  flex: 1.5;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.modal-photo-container img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.modal-comment-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  background: #fff;
+  border-left: 1px solid #f1f5f9;
+}
+
+.modal-comment-container h3 {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.comment-list {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 1rem;
+  padding-right: 0.5rem;
+}
+
+.comment-item {
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.comment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+
+.comment-author {
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--primary-dark);
+}
+
+.comment-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.comment-text {
+  font-size: 0.9375rem;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.comment-form {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 0.75rem;
+}
+
+@media (max-width: 768px) {
+  .modal-body {
+    flex-direction: column;
+    height: 90vh;
+  }
+
+  .modal-photo-container {
+    flex: none;
+    height: 40vh;
+  }
+
+  .modal-comment-container {
+    flex: 1;
+    border-left: none;
+    border-top: 1px solid #f1f5f9;
+  }
+}
+
 @media (max-width: 480px) {
   .photo-grid {
     grid-template-columns: repeat(3, 1fr);
