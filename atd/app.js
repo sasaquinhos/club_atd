@@ -377,8 +377,8 @@ function renderAttendanceInput(eventIds) {
 
     return `<div class="card" style="border-left: 5px solid var(--primary); margin-bottom: 1rem;">
         <h3>${event.title} の出欠回答</h3>
-        ${deadlineStr ? `<div style="color: #ef4444; font-weight: bold; font-size: 0.9rem; margin-bottom: 0.25rem;">${deadlineStr}</div>` : ''}
-        <div class="item-meta" style="margin-bottom: 0.5rem;">${formatDate(event.date)} ${event.time} @ ${event.location}</div>
+        <div class="item-meta" style="margin-bottom: 0.25rem;">${formatDate(event.date)} ${event.time} @ ${event.location}</div>
+        ${deadlineStr ? `<div style="color: #ef4444; font-weight: bold; font-size: 0.9rem; margin-bottom: 0.5rem;">${deadlineStr}</div>` : ''}
         ${event.note ? `<div style="font-size: 0.85rem; background: #f0fdf4; padding: 0.5rem; border-radius: 6px; margin-bottom: 1rem; border-left: 3px solid var(--primary-dark); color: var(--text-main); white-space: pre-wrap;">${event.note}</div>` : ''}
         <div class="form-group">
           <label>ステータス</label>
