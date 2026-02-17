@@ -303,7 +303,7 @@ function updateEventSelect(periodId) {
     });
   const currentEventId = eventSelect.value;
   eventSelect.innerHTML = '<option value="">-- イベントを選択 --</option>' +
-    filteredEvents.map(e => `<option value="${e.id}" ${String(e.id) === String(currentEventId) ? 'selected' : ''}>${formatDate(e.date)} ${e.time || ''} ${e.title}</option>`).join('');
+    filteredEvents.map(e => `<option value="${e.id}" ${String(e.id) === String(currentEventId) ? 'selected' : ''}>${e.canceled ? '[中止] ' : ''}${formatDate(e.date)} ${e.time || ''} ${e.title}</option>`).join('');
   eventSelect.disabled = false;
   eventSelect.onchange = (e) => {
     if (e.target.value) {
