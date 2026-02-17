@@ -369,7 +369,7 @@ function renderAttendanceInput(eventIds) {
 
     const key = `${eventId}_${memberId}`;
     const att = state.attendance[key] || { status: '', comment: '' };
-    const deadlineStr = event.deadlinedate ? `※ 回答締め切り：${event.deadlinedate.replace(/-/g, '/')} ${event.deadlinetime || '00:00'}` : '';
+    const deadlineStr = event.deadlinedate ? `※ 回答締め切り：${formatDate(event.deadlinedate)} ${event.deadlinetime || '00:00'}` : '';
 
     if (isPast) {
       return ''; // Hide input card completely for past events
