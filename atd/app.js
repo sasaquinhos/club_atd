@@ -778,7 +778,7 @@ if (addEventForm) {
       note: document.getElementById('event-note').value,
       deadlineDate: document.getElementById('event-deadline-date').value,
       deadlineTime: document.getElementById('event-deadline-time').value,
-      canceled: document.getElementById('event-canceled').checked
+      canceled: false
     };
     setLoading(true);
     const res = await apiCall('add_event', payload);
