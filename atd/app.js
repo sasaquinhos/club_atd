@@ -165,6 +165,7 @@ async function loadDataFromServer() {
   const res = await apiCall('get_initial_data');
   if (res.result === 'success') {
     state.periods = res.data.periods || [];
+    sortPeriods();
     state.members = res.data.members || [];
     state.events = res.data.events || [];
     state.attendance = res.data.attendance || {};
@@ -185,6 +186,7 @@ function loadFromLocal() {
         startdate: p.startdate || p.startDate,
         enddate: p.enddate || p.endDate
       }));
+      sortPeriods();
       state.members = (parsed.members || []).map(m => ({
         ...m,
         joinmonth: m.joinmonth || m.joinMonth,
@@ -198,6 +200,10 @@ function loadFromLocal() {
     console.error('Failed to load from local storage', e);
   }
   return false;
+}
+
+function sortPeriods() {
+  state.periods.sort((a, b) => (b.startdate || "").localeCompare(a.startdate || ""));
 }
 
 function saveToLocal() {
@@ -694,6 +700,7 @@ async function saveEditMaster() {
   setLoading(true);
   const res = await apiCall(`update_${type}`, payload);
   if (res.result === 'success') {
+    sortPeriods();
     saveToLocal();
     renderAll();
   } else {
@@ -736,6 +743,7 @@ if (addPeriodForm) {
     const res = await apiCall('add_period', payload);
     if (res.result === 'success') {
       state.periods.push({ id, name: payload.name, startdate: payload.startDate, enddate: payload.endDate });
+      sortPeriods();
       saveToLocal();
       addPeriodForm.reset();
       renderAll();
