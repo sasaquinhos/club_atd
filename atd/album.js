@@ -1,8 +1,12 @@
 // GAS Web App URL (デプロイ後に取得したURLをここに記載してください)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxkE3ndAUFl3CPbr6Ivc2YQex7fUWq_UEuOPdikZaA-LziWvv8yth_YTgPZfy3kPFL-Eg/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxzm39oEzSjL1aQC5wrPCGzh7gogi5ZmY-wPXuEDYDx1sYw3xkx5e0JOS3hDV4VyVNvSA/exec';
+
+let allMembers = [];
+let currentUserId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadEventNames();
+    loadMembers(); // メンバー一覧の読み込み
 
     document.getElementById('upload-btn').addEventListener('click', handleUpload);
     document.getElementById('view-event-select').addEventListener('change', (e) => {
@@ -10,6 +14,13 @@ document.addEventListener('DOMContentLoaded', () => {
             loadImages(e.target.value);
         } else {
             document.getElementById('photo-grid').innerHTML = '';
+        }
+    });
+
+    document.getElementById('comment-user').addEventListener('change', (e) => {
+        currentUserId = e.target.value;
+        if (currentPhotoId) {
+            loadComments(currentPhotoId); // ユーザー切り替え時にボタン表示を更新
         }
     });
 });
@@ -58,6 +69,43 @@ async function loadEventNames() {
     } catch (error) {
         console.error('Error fetching event names:', error);
         alert('イベント一覧の取得に失敗しました。GASのURLが正しいか確認してください。');
+    }
+}
+
+async function loadMembers() {
+    try {
+        const response = await fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'get_initial_data' })
+        });
+        const data = await response.json();
+
+        if (data.result === 'success' && data.data.members) {
+            allMembers = data.data.members;
+            const userSelect = document.getElementById('comment-user');
+            let options = '<option value="">-- 名前を選択 --</option>';
+
+            // 現在の月を取得 (YYYY-MM)
+            const now = new Date();
+            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            // 在籍中のメンバーのみを抽出
+            const activeMembers = allMembers.filter(m => {
+                const join = m.joinmonth ? String(m.joinmonth).substring(0, 7) : null;
+                const leave = m.leavemonth ? String(m.leavemonth).substring(0, 7) : null;
+
+                if (join && currentMonth < join) return false;
+                if (leave && currentMonth > leave) return false;
+                return true;
+            });
+
+            activeMembers.forEach(m => {
+                options += `<option value="${m.id}">${m.name}</option>`;
+            });
+            userSelect.innerHTML = options;
+        }
+    } catch (error) {
+        console.error('Error loading members:', error);
     }
 }
 
@@ -249,24 +297,35 @@ async function loadComments(photoId) {
     try {
         const response = await fetch(`${GAS_URL}?action=getAlbumComments&photoId=${encodeURIComponent(photoId)}`);
         const data = await response.json();
+        console.log('Comments data loaded:', data);
 
         if (!data.comments || data.comments.length === 0) {
             commentList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 1rem;">まだコメントはありません。</p>';
             return;
         }
 
-        // コメントを表示（古い順：GAS側でソートせずにそのまま表示）
-        commentList.innerHTML = data.comments.map(c => `
-            <div class="comment-item">
-                <div class="comment-header">
-                    <span class="comment-author">${escapeHtml(c.username)}</span>
-                    <span class="comment-date">${c.timestamp}</span>
+        // コメントを表示
+        commentList.innerHTML = data.comments.map(c => {
+            const isOwner = currentUserId && String(c.postuserid) === String(currentUserId);
+            const ownerActions = isOwner ? `
+                <div class="comment-actions">
+                    <button class="btn-text" onclick="updateAlbumComment('${c.commentid}', '${c.postuserid}')">編集</button>
+                    <button class="btn-text text-danger" onclick="deleteAlbumComment('${c.commentid}', '${c.postuserid}')">削除</button>
                 </div>
-                <div class="comment-text">${escapeHtml(c.commenttext)}</div>
-            </div>
-        `).join('');
+            ` : '';
 
-        // 最下部までスクロール
+            return `
+                <div class="comment-item">
+                    <div class="comment-header">
+                        <span class="comment-author">${escapeHtml(c.username)}</span>
+                        <span class="comment-date">${c.timestamp}</span>
+                    </div>
+                    <div class="comment-text">${escapeHtml(c.commenttext)}</div>
+                    ${ownerActions}
+                </div>
+            `;
+        }).join('');
+
         commentList.scrollTop = commentList.scrollHeight;
 
     } catch (error) {
@@ -276,13 +335,17 @@ async function loadComments(photoId) {
 }
 
 async function saveComment() {
-    const userField = document.getElementById('comment-user');
+    const userSelect = document.getElementById('comment-user');
     const textField = document.getElementById('comment-text');
-    const userName = userField.value.trim();
+    const postUserId = userSelect.value;
     const commentText = textField.value.trim();
 
-    if (!userName || !commentText || !currentPhotoId) {
-        alert('名前とコメントを入力してください。');
+    // 選択された名前を取得
+    const selectedOption = userSelect.options[userSelect.selectedIndex];
+    const userName = selectedOption ? selectedOption.text : '';
+
+    if (!postUserId || !commentText || !currentPhotoId) {
+        alert('名前を選択し、コメントを入力してください。');
         return;
     }
 
@@ -294,19 +357,84 @@ async function saveComment() {
                 action: 'saveAlbumComment',
                 photoId: currentPhotoId,
                 userName: userName,
+                postUserId: postUserId,
                 commentText: commentText
             })
         });
 
         const result = await response.json();
         if (result.result === 'success') {
-            textField.value = ''; // コメント欄のみクリア
-            await loadComments(currentPhotoId); // リロード
+            textField.value = '';
+            await loadComments(currentPhotoId);
         } else {
             alert('保存に失敗しました: ' + (result.error || '不明なエラー'));
         }
     } catch (error) {
         console.error('Error saving comment:', error);
+        alert('通信エラーが発生しました。');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function updateAlbumComment(commentId, postUserId) {
+    const newContent = prompt('コメントを編集します。新しい内容を入力してください：');
+    if (newContent === null) return;
+    if (newContent.trim() === '') {
+        alert('内容を入力してください。');
+        return;
+    }
+
+    try {
+        showLoading(true);
+        const response = await fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'update_album_comment',
+                commentId: commentId,
+                postUserId: postUserId,
+                currentUserId: currentUserId,
+                newContent: newContent.trim()
+            })
+        });
+
+        const result = await response.json();
+        if (result.result === 'success') {
+            await loadComments(currentPhotoId);
+        } else {
+            alert('更新に失敗しました: ' + (result.error || '不明なエラー'));
+        }
+    } catch (error) {
+        console.error('Error updating comment:', error);
+        alert('通信エラーが発生しました。');
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function deleteAlbumComment(commentId, postUserId) {
+    if (!confirm('このコメントを削除してもよろしいですか？')) return;
+
+    try {
+        showLoading(true);
+        const response = await fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'delete_album_comment',
+                commentId: commentId,
+                postUserId: postUserId,
+                currentUserId: currentUserId
+            })
+        });
+
+        const result = await response.json();
+        if (result.result === 'success') {
+            await loadComments(currentPhotoId);
+        } else {
+            alert('削除に失敗しました: ' + (result.error || '不明なエラー'));
+        }
+    } catch (error) {
+        console.error('Error deleting comment:', error);
         alert('通信エラーが発生しました。');
     } finally {
         showLoading(false);
