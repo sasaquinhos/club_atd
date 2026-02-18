@@ -557,3 +557,29 @@ td {
     gap: 0.25rem;
   }
 }
+
+.comment-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  justify-content: flex-end;
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--secondary);
+  text-decoration: underline;
+}
+
+.btn-text:hover {
+  filter: brightness(0.8);
+}
+
+.text-danger {
+  color: #ef4444 !important;
+}
