@@ -272,7 +272,7 @@ textarea:focus {
 }
 
 .mt-1 {
-  margin-top: 1rem;
+  margin-top: 0.75rem;
 }
 
 .item-actions {
@@ -536,18 +536,24 @@ td {
 @media (max-width: 768px) {
   .modal-body {
     flex-direction: column;
-    height: 90vh;
+    height: 85vh;
+    /* 少し高さを抑えて余裕を持たせる */
   }
 
   .modal-photo-container {
     flex: none;
-    height: 40vh;
+    height: 35vh;
+    /* 写真の高さを調整 */
   }
 
   .modal-comment-container {
     flex: 1;
     border-left: none;
     border-top: 1px solid #f1f5f9;
+    padding: 0.75rem;
+    /* 余白を少し削る */
+    min-height: 0;
+    /* flexアイテムとして縮小可能に */
   }
 }
 
