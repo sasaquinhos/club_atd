@@ -1,12 +1,11 @@
 // GAS Web App URL (デプロイ後に取得したURLをここに記載してください)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxzm39oEzSjL1aQC5wrPCGzh7gogi5ZmY-wPXuEDYDx1sYw3xkx5e0JOS3hDV4VyVNvSA/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxF9CesTf5aHuH7X4cQ02FIke7j_VxI0JGdikXrPktiq62CkEaLYYvXuJCPkRYHJvl6WA/exec';
 
 let allMembers = [];
 let currentUserId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    loadEventNames();
-    loadMembers(); // メンバー一覧の読み込み
+    loadAlbumInitData(); // イベント一覧とメンバー一覧をまとめて読み込み
 
     document.getElementById('upload-btn').addEventListener('click', handleUpload);
     document.getElementById('view-event-select').addEventListener('change', (e) => {
@@ -38,74 +37,58 @@ function switchAlbumTab(tab) {
     }
 }
 
-async function loadEventNames() {
+async function loadAlbumInitData() {
+    showLoading(true);
     try {
-        const response = await fetch(`${GAS_URL}?action=get_event_names`);
+        const response = await fetch(`${GAS_URL}?action=get_album_init_data`);
         const data = await response.json();
 
-        const viewSelect = document.getElementById('view-event-select');
-        const uploadSelect = document.getElementById('upload-event-select');
+        if (data.result === 'success') {
+            // 1. イベント一覧の処理
+            const viewSelect = document.getElementById('view-event-select');
+            const uploadSelect = document.getElementById('upload-event-select');
+            let eventOptions = '<option value="">-- イベントを選択 --</option>';
 
-        // data.events は { name: "...", date: "..." } の配列になっているはず
-        let options = '<option value="">-- イベントを選択 --</option>';
+            if (data.events && Array.isArray(data.events)) {
+                data.events.forEach(event => {
+                    const label = `${event.canceled ? '[中止] ' : ''}${formatDate(event.date)} ${event.time || ''} ${event.name}`;
+                    const value = `${event.date}_${event.name}`;
+                    eventOptions += `<option value="${value}">${label}</option>`;
+                });
+            }
+            viewSelect.innerHTML = eventOptions;
+            uploadSelect.innerHTML = eventOptions;
 
-        if (data.events && Array.isArray(data.events)) {
-            data.events.forEach(event => {
-                // 表示ラベル: "2024-01-01 イベント名"
-                // 値: "2024-01-01_イベント名" (フォルダ名・識別子として使用)
-                const label = `${event.date} ${event.name}`;
-                const value = `${event.date}_${event.name}`;
-                options += `<option value="${value}">${label}</option>`;
-            });
-        } else if (data.eventNames) {
-            // 旧APIの互換性維持（念のため）
-            data.eventNames.forEach(name => {
-                options += `<option value="${name}">${name}</option>`;
-            });
-        }
+            // 2. メンバー一覧の処理
+            if (data.members) {
+                allMembers = data.members;
+                const userSelect = document.getElementById('comment-user');
+                let memberOptions = '<option value="">-- 名前を選択 --</option>';
 
-        viewSelect.innerHTML = options;
-        uploadSelect.innerHTML = options;
-    } catch (error) {
-        console.error('Error fetching event names:', error);
-        alert('イベント一覧の取得に失敗しました。GASのURLが正しいか確認してください。');
-    }
-}
+                // 現在の月を取得 (YYYY-MM)
+                const now = new Date();
+                const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-async function loadMembers() {
-    try {
-        const response = await fetch(GAS_URL, {
-            method: 'POST',
-            body: JSON.stringify({ action: 'get_initial_data' })
-        });
-        const data = await response.json();
+                // 在籍中のメンバーのみを抽出
+                const activeMembers = allMembers.filter(m => {
+                    const join = m.joinmonth ? String(m.joinmonth).substring(0, 7) : null;
+                    const leave = m.leavemonth ? String(m.leavemonth).substring(0, 7) : null;
 
-        if (data.result === 'success' && data.data.members) {
-            allMembers = data.data.members;
-            const userSelect = document.getElementById('comment-user');
-            let options = '<option value="">-- 名前を選択 --</option>';
+                    if (join && currentMonth < join) return false;
+                    if (leave && currentMonth > leave) return false;
+                    return true;
+                });
 
-            // 現在の月を取得 (YYYY-MM)
-            const now = new Date();
-            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-            // 在籍中のメンバーのみを抽出
-            const activeMembers = allMembers.filter(m => {
-                const join = m.joinmonth ? String(m.joinmonth).substring(0, 7) : null;
-                const leave = m.leavemonth ? String(m.leavemonth).substring(0, 7) : null;
-
-                if (join && currentMonth < join) return false;
-                if (leave && currentMonth > leave) return false;
-                return true;
-            });
-
-            activeMembers.forEach(m => {
-                options += `<option value="${m.id}">${m.name}</option>`;
-            });
-            userSelect.innerHTML = options;
+                activeMembers.forEach(m => {
+                    memberOptions += `<option value="${m.id}">${m.name}</option>`;
+                });
+                userSelect.innerHTML = memberOptions;
+            }
         }
     } catch (error) {
-        console.error('Error loading members:', error);
+        console.error('Error loading album init data:', error);
+    } finally {
+        showLoading(false);
     }
 }
 
@@ -457,4 +440,13 @@ function escapeHtml(str) {
 
 function showLoading(show) {
     document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+}
+/**
+ * 日付フォーマット (M/D(曜))
+ */
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const days = ['日', '月', '火', '水', '木', '金', '土'];
+    return `${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`;
 }
