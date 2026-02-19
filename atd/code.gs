@@ -1,4 +1,5 @@
 function doGet(e) {
+  const doc = SpreadsheetApp.getActiveSpreadsheet();
   const action = e.parameter.action;
   if (action === 'get_event_names') {
     return handleGetEventNames();
@@ -6,6 +7,9 @@ function doGet(e) {
     return handleGetAlbumImages(e.parameter.eventName);
   } else if (action === 'getAlbumComments') {
     return handleGetAlbumComments(e.parameter.photoId);
+  } else if (action === 'get_reactions') {
+    // Assuming handleGetReactions does not need 'doc' in doGet context, similar to other doGet handlers
+    return handleGetReactions(doc, e.parameter.photoId, e.parameter.userId);
   } else if (action === 'get_album_init_data') {
     return handleGetAlbumInitData();
   }
@@ -64,7 +68,7 @@ function doPost(e) {
       case 'upload_album_image':
         result = handleUploadAlbumImage(data);
         break;
-      case 'saveAlbumComment':
+      case 'saveAlbumComment': // Original case name
         result = handleSaveAlbumComment(doc, data);
         break;
       case 'update_album_comment':
@@ -73,12 +77,19 @@ function doPost(e) {
       case 'delete_album_comment':
         result = handleDeleteAlbumComment(doc, data);
         break;
+      case 'save_reaction':
+        result = handleSaveReaction(doc, data);
+        break;
       default:
         throw new Error('Unknown action: ' + action);
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ result: 'success', data: result }))
-      .setMimeType(ContentService.MimeType.JSON);
+    // 共通の成功レスポンス形式
+    return ContentService.createTextOutput(JSON.stringify({ 
+      result: 'success', 
+      data: result,
+      success: true // 簡易判定用
+    })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ result: 'error', error: err.toString() }))
@@ -94,12 +105,36 @@ function doPost(e) {
 function handleGetInitialData(doc) {
   const cache = CacheService.getScriptCache();
   const cached = cache.get('initial_data');
-  if (cached) return JSON.parse(cached);
+  // 常に最新の判定を行うためキャッシュはスキップするか、加工後のデータを保存します。
+
+  const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy-MM-dd");
+
+  // 1. 期間データの取得と加工
+  let periods = getSheetData(doc, 'Periods').map(p => ({
+    ...p, // すべての元フィールド (id, name, startdate, enddate) を保持
+    periodId: p.id,
+    periodName: p.name,
+    periodDate: p.startdate,
+    isPast: (p.enddate || "") < todayStr
+  }));
+  // periodDate で昇順ソート
+  periods.sort((a, b) => (a.periodDate || "").localeCompare(b.periodDate || ""));
+
+  // 2. イベントデータの取得と加工
+  let events = getSheetData(doc, 'Events').map(e => ({
+    ...e, // すべての元フィールド (id, date, title, location等) を保持
+    eventId: e.id,
+    eventName: e.title,
+    eventDate: e.date,
+    isPast: (e.date || "") < todayStr
+  }));
+  // eventDate で昇順ソート
+  events.sort((a, b) => (a.eventDate || "").localeCompare(b.eventDate || ""));
 
   const data = {
-    periods: getSheetData(doc, 'Periods'),
+    periods: periods,
     members: getSheetData(doc, 'Members'),
-    events: getSheetData(doc, 'Events'),
+    events: events,
     attendance: getAttendanceData(doc)
   };
   
@@ -344,13 +379,26 @@ function handleGetAlbumInitData() {
   const doc = SpreadsheetApp.getActiveSpreadsheet();
   const cache = CacheService.getScriptCache();
   
-  // メンバーデータとイベント一覧を統合して返す
+  // メンバー、期間、イベント一覧を統合して返す
   let members = [];
+  let periods = [];
   const cachedInitial = cache.get('initial_data');
   if (cachedInitial) {
-    members = JSON.parse(cachedInitial).members;
+    const parsed = JSON.parse(cachedInitial);
+    members = parsed.members;
+    periods = parsed.periods;
   } else {
     members = getSheetData(doc, 'Members');
+    // 期間データの取得が必要な場合は再計算
+    const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy-MM-dd");
+    periods = getSheetData(doc, 'Periods').map(p => ({
+      ...p,
+      periodId: p.id,
+      periodName: p.name,
+      periodDate: p.startdate,
+      isPast: (p.enddate || "") < todayStr
+    }));
+    periods.sort((a, b) => (a.periodDate || "").localeCompare(b.periodDate || ""));
   }
 
   const events = getEventList(doc);
@@ -358,13 +406,14 @@ function handleGetAlbumInitData() {
   return createJsonResponse({
     result: 'success',
     members: members,
+    periods: periods,
     events: events
   });
 }
 
 function getEventList(doc) {
   const cache = CacheService.getScriptCache();
-  const cached = cache.get('event_list');
+  const cached = cache.get('event_list_v2');
   if (cached) return JSON.parse(cached);
 
   const sheet = doc.getSheetByName('Events');
@@ -373,6 +422,7 @@ function getEventList(doc) {
   const rows = sheet.getDataRange().getValues();
   if (rows.length <= 1) return [];
   
+  const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "yyyy-MM-dd");
   const events = [];
   rows.slice(1).forEach(row => {
     const date = row[1];
@@ -399,17 +449,18 @@ function getEventList(doc) {
           name: name, 
           date: dateStr,
           time: timeStr,
-          canceled: !!canceled
+          canceled: !!canceled,
+          isPast: dateStr < todayStr
         });
     }
   });
 
   events.sort((a, b) => {
-    if (a.date !== b.date) return b.date.localeCompare(a.date);
-    return (b.time || "").localeCompare(a.time || "");
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    return (a.time || "").localeCompare(b.time || "");
   });
 
-  cache.put('event_list', JSON.stringify(events), 600); // 10分キャッシュ
+  cache.put('event_list_v2', JSON.stringify(events), 600); // 10分キャッシュ
   return events;
 }
 
@@ -549,6 +600,122 @@ function handleDeleteAlbumComment(doc, data) {
   }
   return { success: false, error: 'Comment not found' };
 }
+
+/**
+ * リアクション（スタンプ）関連
+ */
+
+/**
+ * リアクションの保存/更新/削除
+ */
+function handleSaveReaction(doc, data) {
+  let sheet = doc.getSheetByName('Reactions') || doc.insertSheet('Reactions');
+  const headers = ['commentId', 'userId', 'reactionType', 'timestamp'];
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  }
+
+  const rows = sheet.getDataRange().getValues();
+  let rowIndex = -1;
+
+  // すでにそのユーザーがそのコメントにリアクションしているか探す
+  // 同時に、不整合で複数行存在する場合はすべて削除対象とする（最後の1件のみ更新に使う）
+  let rowsToDelete = [];
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(data.commentId) && String(rows[i][1]) === String(data.userId)) {
+      if (rowIndex === -1) {
+        rowIndex = i + 1;
+      } else {
+        rowsToDelete.push(i + 1);
+      }
+    }
+  }
+
+  // 重複行を後ろから削除（インデックスずれ防止）
+  for (let i = rowsToDelete.length - 1; i >= 0; i--) {
+    sheet.deleteRow(rowsToDelete[i]);
+    if (rowIndex > rowsToDelete[i]) rowIndex--;
+  }
+
+  const timestamp = new Date();
+  if (rowIndex > 0) {
+    const existingReaction = rows[rowIndex - 1][2];
+    if (existingReaction === data.reactionType) {
+      // 同じリアクションなら削除（取り消し）
+      sheet.deleteRow(rowIndex);
+    } else {
+      // 異なるリアクションなら更新
+      sheet.getRange(rowIndex, 3, 1, 2).setValues([[data.reactionType, timestamp]]);
+    }
+  } else {
+    // 新規追加
+    sheet.appendRow([data.commentId, data.userId, data.reactionType, timestamp]);
+  }
+
+
+  // 確実に保存を反映させてから集計を取得
+  SpreadsheetApp.flush();
+
+  // 高速化のため、保存後にその写真に紐づく全てのリアクション集計を返却する
+  const summary = getReactionsInternal(doc, data.photoId, data.userId);
+  return summary;
+}
+
+
+/**
+ * 写真に紐づく全てのコメントのリアクションを取得・集計 (内部処理用)
+ */
+function getReactionsInternal(doc, photoId, userId) {
+  const commentSheet = doc.getSheetByName('AlbumComments');
+  const reactionSheet = doc.getSheetByName('Reactions');
+  
+  if (!commentSheet || !reactionSheet) return {};
+
+  const comments = commentSheet.getDataRange().getValues();
+  const reactions = reactionSheet.getDataRange().getValues();
+
+  // その写真に紐づくコメントIDをリストアップ
+  const targetCommentIds = comments.slice(1)
+    .filter(row => String(row[1]) === String(photoId)) // 1: photoId
+    .map(row => String(row[0])); // 0: commentId
+
+  const summary = {};
+  targetCommentIds.forEach(id => {
+    summary[id] = {
+      like: 0,
+      love: 0,
+      laugh: 0,
+      party: 0,
+      userReaction: null
+    };
+  });
+
+  // リアクションを集計
+  reactions.slice(1).forEach(row => {
+    const cid = String(row[0]);
+    const uid = String(row[1]);
+    const rtype = row[2];
+
+    if (summary[cid]) {
+      if (summary[cid].hasOwnProperty(rtype)) {
+        summary[cid][rtype]++;
+      }
+      if (uid === String(userId)) {
+        summary[cid].userReaction = rtype;
+      }
+    }
+  });
+
+  return summary;
+}
+
+/**
+ * 写真に紐づく全てのコメントのリアクションを取得・集計 (API用)
+ */
+function handleGetReactions(doc, photoId, userId) {
+  return createJsonResponse(getReactionsInternal(doc, photoId, userId));
+}
+
 
 function handleUploadAlbumImage(data) {
   const rootFolderName = "projectC_album";
