@@ -278,12 +278,26 @@ function renderAll() {
 function renderRegistrationUI() {
   if (!periodSelect) return;
   const currentPeriodId = periodSelect.value;
-  periodSelect.innerHTML = '<option value="">-- 期間を選択 --</option>' +
-    state.periods.map(p => {
-      const label = p.isPast ? `${p.periodName}（終了）` : p.periodName;
-      const style = p.isPast ? 'style="background-color: #666; color: white;"' : '';
-      return `<option value="${p.periodId}" ${String(p.periodId) === String(currentPeriodId) ? 'selected' : ''} ${style}>${label}</option>`;
+  const activePeriods = state.periods.filter(p => !p.isPast);
+  const pastPeriods = state.periods.filter(p => p.isPast);
+
+  let html = '<option value="">-- 期間を選択 --</option>';
+
+  if (pastPeriods.length > 0) {
+    html += '<optgroup label="終了済み">';
+    html += pastPeriods.map(p => {
+      return `<option value="${p.periodId}" ${String(p.periodId) === String(currentPeriodId) ? 'selected' : ''} style="background-color: #666; color: white;">【終了】 ${p.periodName}</option>`;
     }).join('');
+    html += '</optgroup>';
+  }
+
+  if (activePeriods.length > 0) {
+    html += '<optgroup label="開催中">';
+    html += activePeriods.map(p => `<option value="${p.periodId}" ${String(p.periodId) === String(currentPeriodId) ? 'selected' : ''}>${p.periodName}</option>`).join('');
+    html += '</optgroup>';
+  }
+
+  periodSelect.innerHTML = html;
 
   periodSelect.onchange = (e) => {
     updateEventSelect(e.target.value);
@@ -305,17 +319,41 @@ function updateEventSelect(periodId) {
   if (!period) return;
 
   // GAS側で期間内かつ昇順ソート済み
-  const filteredEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate);
+  // 日付の古い順にソート（昇順）
+  const filteredEvents = state.events
+    .filter(e => e.date >= period.startdate && e.date <= period.enddate)
+    .sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      return (a.time || "").localeCompare(b.time || "");
+    });
 
   const currentEventId = eventSelect.value;
-  eventSelect.innerHTML = '<option value="">-- イベントを選択 --</option>' +
-    filteredEvents.map(e => {
+  const activeEvents = filteredEvents.filter(e => !e.isPast);
+  const pastEvents = filteredEvents.filter(e => e.isPast);
+
+  let html = '<option value="">-- イベントを選択 --</option>';
+
+  if (pastEvents.length > 0) {
+    html += '<optgroup label="終了済み">';
+    html += pastEvents.map(e => {
       const dateLabel = formatDate(e.eventDate);
-      const label = e.isPast ? `${dateLabel} ${e.time || ''} ${e.eventName}（終了）` : `${dateLabel} ${e.time || ''} ${e.eventName}`;
-      const style = e.isPast ? 'style="background-color: #666; color: white;"' : '';
       const canceledPrefix = e.canceled ? '[中止] ' : '';
-      return `<option value="${e.eventId}" ${String(e.eventId) === String(currentEventId) ? 'selected' : ''} ${style}>${canceledPrefix}${label}</option>`;
+      return `<option value="${e.eventId}" ${String(e.eventId) === String(currentEventId) ? 'selected' : ''} style="background-color: #666; color: white;">【終了】 ${canceledPrefix}${dateLabel} ${e.time || ''} ${e.eventName}</option>`;
     }).join('');
+    html += '</optgroup>';
+  }
+
+  if (activeEvents.length > 0) {
+    html += '<optgroup label="開催予定">';
+    html += activeEvents.map(e => {
+      const dateLabel = formatDate(e.eventDate);
+      const canceledPrefix = e.canceled ? '[中止] ' : '';
+      return `<option value="${e.eventId}" ${String(e.eventId) === String(currentEventId) ? 'selected' : ''}>${canceledPrefix}${dateLabel} ${e.time || ''} ${e.eventName}</option>`;
+    }).join('');
+    html += '</optgroup>';
+  }
+
+  eventSelect.innerHTML = html;
 
   eventSelect.disabled = false;
   eventSelect.onchange = (e) => {
