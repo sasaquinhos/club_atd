@@ -1,5 +1,5 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycbxF9CesTf5aHuH7X4cQ02FIke7j_VxI0JGdikXrPktiq62CkEaLYYvXuJCPkRYHJvl6WA/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzeNFOJjieIWPvyoHggZyaNZtaEfdZEl9koG95q0pzBFrQf-Re0cg7-vkF1vCiUNmIShw/exec';
 
 // App State
 const state = {
@@ -98,28 +98,27 @@ function renderAllWithPeriod() {
 
   if (curPeriod) {
     if (periodSelect && !periodSelect.value) {
-      periodSelect.value = curPeriod.id;
-      updateEventSelect(curPeriod.id);
+      periodSelect.value = curPeriod.periodId;
+      updateEventSelect(curPeriod.periodId);
     }
     if (statusPeriodSelect && !statusPeriodSelect.value) {
-      statusPeriodSelect.value = curPeriod.id;
+      statusPeriodSelect.value = curPeriod.periodId;
       renderStatusUI();
     }
 
     const periodEvents = state.events.filter(e => e.date >= curPeriod.startdate && e.date <= curPeriod.enddate);
     if (periodEvents.length > 0 && !eventSelect.value) {
-      let targetDate = '';
-      const futureEvents = periodEvents.filter(e => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
-      if (futureEvents.length > 0) targetDate = futureEvents[0].date;
-      else {
-        const pastEvents = periodEvents.filter(e => e.date < today).sort((a, b) => b.date.localeCompare(a.date));
-        if (pastEvents.length > 0) targetDate = pastEvents[0].date;
-      }
+      // GAS側で昇順になっているため、未来の最初のイベント、なければ最後の過去イベントを選択
+      const futureEvents = periodEvents.filter(e => !e.isPast);
+      const pastEvents = periodEvents.filter(e => e.isPast);
 
-      if (targetDate) {
-        const targetEvents = periodEvents.filter(e => e.date === targetDate);
-        if (targetEvents.length === 1) eventSelect.value = targetEvents[0].id;
-        renderAutoDetectedEvents(targetEvents);
+      let targetEvent = null;
+      if (futureEvents.length > 0) targetEvent = futureEvents[0];
+      else if (pastEvents.length > 0) targetEvent = pastEvents[pastEvents.length - 1];
+
+      if (targetEvent) {
+        eventSelect.value = targetEvent.eventId;
+        renderAutoDetectedEvents([targetEvent]);
       }
     }
   }
@@ -203,7 +202,7 @@ function loadFromLocal() {
 }
 
 function sortPeriods() {
-  state.periods.sort((a, b) => (b.startdate || "").localeCompare(a.startdate || ""));
+  state.periods.sort((a, b) => (a.startdate || "").localeCompare(b.startdate || ""));
 }
 
 function saveToLocal() {
@@ -280,7 +279,11 @@ function renderRegistrationUI() {
   if (!periodSelect) return;
   const currentPeriodId = periodSelect.value;
   periodSelect.innerHTML = '<option value="">-- 期間を選択 --</option>' +
-    state.periods.map(p => `<option value="${p.id}" ${String(p.id) === String(currentPeriodId) ? 'selected' : ''}>${p.name}</option>`).join('');
+    state.periods.map(p => {
+      const label = p.isPast ? `${p.periodName}（終了）` : p.periodName;
+      const style = p.isPast ? 'style="background-color: #666; color: white;"' : '';
+      return `<option value="${p.periodId}" ${String(p.periodId) === String(currentPeriodId) ? 'selected' : ''} ${style}>${label}</option>`;
+    }).join('');
 
   periodSelect.onchange = (e) => {
     updateEventSelect(e.target.value);
@@ -298,18 +301,22 @@ function updateEventSelect(periodId) {
     eventSelect.disabled = true;
     return;
   }
-  const period = state.periods.find(p => String(p.id) === String(periodId));
+  const period = state.periods.find(p => String(p.periodId) === String(periodId));
   if (!period) return;
-  const filteredEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate)
-    .sort((a, b) => {
-      // Sort by date first (descending)
-      if (a.date !== b.date) return b.date.localeCompare(a.date);
-      // If same date, sort by time (descending)
-      return (b.time || "").localeCompare(a.time || "");
-    });
+
+  // GAS側で期間内かつ昇順ソート済み
+  const filteredEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate);
+
   const currentEventId = eventSelect.value;
   eventSelect.innerHTML = '<option value="">-- イベントを選択 --</option>' +
-    filteredEvents.map(e => `<option value="${e.id}" ${String(e.id) === String(currentEventId) ? 'selected' : ''}>${e.canceled ? '[中止] ' : ''}${formatDate(e.date)} ${e.time || ''} ${e.title}</option>`).join('');
+    filteredEvents.map(e => {
+      const dateLabel = formatDate(e.eventDate);
+      const label = e.isPast ? `${dateLabel} ${e.time || ''} ${e.eventName}（終了）` : `${dateLabel} ${e.time || ''} ${e.eventName}`;
+      const style = e.isPast ? 'style="background-color: #666; color: white;"' : '';
+      const canceledPrefix = e.canceled ? '[中止] ' : '';
+      return `<option value="${e.eventId}" ${String(e.eventId) === String(currentEventId) ? 'selected' : ''} ${style}>${canceledPrefix}${label}</option>`;
+    }).join('');
+
   eventSelect.disabled = false;
   eventSelect.onchange = (e) => {
     if (e.target.value) {
@@ -321,7 +328,7 @@ function updateEventSelect(periodId) {
       eventSummaryArea.style.display = 'none';
     }
   };
-  if (currentEventId && state.events.find(e => String(e.id) === String(currentEventId))) {
+  if (currentEventId && state.events.find(e => String(e.eventId) === String(currentEventId))) {
     if (memberSelect.value) {
       renderAttendanceInput([currentEventId]);
       renderEventSummary([currentEventId]);
@@ -389,7 +396,7 @@ function renderAttendanceInput(eventIds) {
         ${event.note ? `<div style="font-size: 0.85rem; background: #f0fdf4; padding: 0.5rem; border-radius: 6px; margin-bottom: 1rem; border-left: 3px solid var(--primary-dark); color: var(--text-main); white-space: pre-wrap;">${event.note}</div>` : ''}
         <div class="form-group">
           <label>ステータス</label>
-          <select onchange="saveAttendanceLocal('${eventId}', '${memberId}', this.value, '${eventId}-comment')" ${event.canceled ? 'disabled' : ''}>
+          <select id="${eventId}-status" ${event.canceled ? 'disabled' : ''}>
             <option value="" ${att.status === '' ? 'selected' : ''}>-- 選択してください --</option>
             <option value="出席" ${att.status === '出席' ? 'selected' : ''}>出席</option>
             <option value="見学" ${att.status === '見学' ? 'selected' : ''}>見学</option>
@@ -400,8 +407,11 @@ function renderAttendanceInput(eventIds) {
         <div class="form-group">
           <label>コメント (任意)</label>
           <input type="text" id="${eventId}-comment" value="${att.comment}" placeholder="遅れて行きます、等" 
-            onblur="saveAttendanceLocal('${eventId}', '${memberId}', null, '${eventId}-comment')" ${event.canceled ? 'disabled' : ''}>
+            ${event.canceled ? 'disabled' : ''}>
         </div>
+        <button class="btn" id="${eventId}-submit-btn" onclick="submitAttendance('${eventId}', '${memberId}')" ${event.canceled ? 'disabled' : ''}>
+          この内容で登録する
+        </button>
       </div>`;
   }).join('');
   registrationInputArea.style.display = 'block';
@@ -467,27 +477,51 @@ function renderEventSummary(eventIds) {
   eventSummaryArea.style.display = 'block';
 }
 
-async function saveAttendanceLocal(eventId, memberId, status, commentElId) {
-  const comment = document.getElementById(commentElId).value;
-  const key = `${eventId}_${memberId}`;
-  const current = state.attendance[key] || {};
-  const newStatus = status !== null ? status : current.status;
+async function submitAttendance(eventId, memberId) {
+  const statusEl = document.getElementById(`${eventId}-status`);
+  const commentEl = document.getElementById(`${eventId}-comment`);
+  const submitBtn = document.getElementById(`${eventId}-submit-btn`);
 
-  // Optimistic UI: Update local state and UI immediately
-  state.attendance[key] = { status: newStatus, comment: comment };
-  saveToLocal();
+  const status = statusEl.value;
+  const comment = commentEl.value;
 
-  const currentEventId = eventSelect.value;
-  if (currentEventId) renderEventSummary([currentEventId]);
+  if (!status) {
+    alert('ステータスを選択してください。');
+    return;
+  }
 
-  // Background sync to server (no await or loading screen)
-  apiCall('update_attendance', { eventId, memberId, status: newStatus, comment })
-    .then(res => {
-      if (res.result !== 'success') {
-        console.error('Failed to sync attendance:', res.error);
-        // Optionally revert local state if server fails critically
-      }
-    });
+  const originalBtnText = submitBtn.innerText;
+  submitBtn.disabled = true;
+  submitBtn.innerText = '登録中...';
+
+  try {
+    const res = await apiCall('update_attendance', { eventId, memberId, status, comment });
+    if (res.result === 'success') {
+      const key = `${eventId}_${memberId}`;
+      state.attendance[key] = { status, comment };
+      saveToLocal();
+
+      const currentEventId = eventSelect.value;
+      if (currentEventId) renderEventSummary([currentEventId]);
+
+      submitBtn.innerText = '登録完了！';
+      submitBtn.style.background = 'var(--secondary)';
+      setTimeout(() => {
+        submitBtn.disabled = false;
+        submitBtn.innerText = originalBtnText;
+        submitBtn.style.background = '';
+      }, 2000);
+    } else {
+      alert('登録に失敗しました: ' + (res.error || '不明なエラー'));
+      submitBtn.disabled = false;
+      submitBtn.innerText = originalBtnText;
+    }
+  } catch (err) {
+    console.error('Submit attendance failed:', err);
+    alert('通信に失敗しました。');
+    submitBtn.disabled = false;
+    submitBtn.innerText = originalBtnText;
+  }
 }
 
 // --- Status Logic ---
