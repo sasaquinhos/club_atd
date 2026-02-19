@@ -124,12 +124,24 @@ async function loadAlbumInitData() {
             allMembers = data.members || [];
 
             // 期間プルダウンの生成
-            const periodOptions = '<option value="">-- 期間を選択 --</option>' +
-                allPeriods.map(p => {
-                    const label = p.isPast ? `${p.periodName}（終了）` : p.periodName;
-                    const style = p.isPast ? 'style="background-color: #666; color: white;"' : '';
-                    return `<option value="${p.periodId}" ${style}>${label}</option>`;
+            const activePeriods = allPeriods.filter(p => !p.isPast);
+            const pastPeriods = allPeriods.filter(p => p.isPast);
+
+            let periodOptions = '<option value="">-- 期間を選択 --</option>';
+            if (pastPeriods.length > 0) {
+                periodOptions += '<optgroup label="終了済み">';
+                periodOptions += pastPeriods.map(p => {
+                    return `<option value="${p.periodId}" style="background-color: #666; color: white;">【終了】 ${p.periodName}</option>`;
                 }).join('');
+                periodOptions += '</optgroup>';
+            }
+            if (activePeriods.length > 0) {
+                periodOptions += '<optgroup label="開催中">';
+                periodOptions += activePeriods.map(p => {
+                    return `<option value="${p.periodId}">${p.periodName}</option>`;
+                }).join('');
+                periodOptions += '</optgroup>';
+            }
 
             document.getElementById('view-period-select').innerHTML = periodOptions;
             document.getElementById('upload-period-select').innerHTML = periodOptions;
@@ -213,16 +225,38 @@ function updateAlbumEventSelect(tab, periodId) {
         return;
     }
 
-    // 期間内のイベントを絞り込み
-    const filteredEvents = allEvents.filter(e => e.date >= period.startdate && e.date <= period.enddate);
+    // 期間内のイベントを絞り込み & 古い順にソート（昇順）
+    const filteredEvents = allEvents
+        .filter(e => e.date >= period.startdate && e.date <= period.enddate)
+        .sort((a, b) => {
+            if (a.date !== b.date) return a.date.localeCompare(b.date);
+            return (a.time || "").localeCompare(b.time || "");
+        });
+
+    const activeEvents = filteredEvents.filter(e => !e.isPast);
+    const pastEvents = filteredEvents.filter(e => e.isPast);
 
     let eventOptions = '<option value="">-- イベントを選択 --</option>';
-    filteredEvents.forEach(event => {
-        const label = `${event.canceled ? '[中止] ' : ''}${formatDate(event.date)} ${event.time || ''} ${event.name}${event.isPast ? '（終了）' : ''}`;
-        const style = event.isPast ? 'style="background-color: #666; color: white;"' : '';
-        const value = `${event.date}_${event.name}`;
-        eventOptions += `<option value="${value}" ${style}>${label}</option>`;
-    });
+
+    if (pastEvents.length > 0) {
+        eventOptions += '<optgroup label="終了済み">';
+        pastEvents.forEach(event => {
+            const label = `${event.canceled ? '[中止] ' : ''}${formatDate(event.date)} ${event.time || ''} ${event.name}`;
+            const value = `${event.date}_${event.name}`;
+            eventOptions += `<option value="${value}" style="background-color: #666; color: white;">【終了】 ${label}</option>`;
+        });
+        eventOptions += '</optgroup>';
+    }
+
+    if (activeEvents.length > 0) {
+        eventOptions += '<optgroup label="開催予定">';
+        activeEvents.forEach(event => {
+            const label = `${event.canceled ? '[中止] ' : ''}${formatDate(event.date)} ${event.time || ''} ${event.name}`;
+            const value = `${event.date}_${event.name}`;
+            eventOptions += `<option value="${value}">${label}</option>`;
+        });
+        eventOptions += '</optgroup>';
+    }
 
     eventSelect.innerHTML = eventOptions;
     eventSelect.disabled = false;
