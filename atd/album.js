@@ -1,13 +1,48 @@
 // GAS Web App URL (デプロイ後に取得したURLをここに記載してください)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxF9CesTf5aHuH7X4cQ02FIke7j_VxI0JGdikXrPktiq62CkEaLYYvXuJCPkRYHJvl6WA/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwsF3RR095GT3OHAXdbjMf_rhWnssLuJNZX7o-cAH4bqCOfLs8pwjrNdj1rHKb45fiEYA/exec';
 
 let allMembers = [];
+let allEvents = [];
+let allPeriods = [];
 let currentUserId = null;
 
+// パフォーマンス向上のためのキャッシュ
+const albumCache = {
+    comments: {},  // photoId -> commentData
+    reactions: {}  // photoId -> reactionData
+};
+
+const ALBUM_AUTH_KEY = 'projectC_album_authenticated';
+const ALBUM_USER_ID_KEY = 'projectC_album_user_id';
+
 document.addEventListener('DOMContentLoaded', () => {
-    loadAlbumInitData(); // イベント一覧とメンバー一覧をまとめて読み込み
+    // 認証状態の確認
+    if (sessionStorage.getItem(ALBUM_AUTH_KEY) === 'true') {
+        showAlbumContent();
+    }
 
     document.getElementById('upload-btn').addEventListener('click', handleUpload);
+
+    // パスワード入力欄でEnterキー
+    const pwdInput = document.getElementById('album-password');
+    if (pwdInput) {
+        pwdInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') checkAlbumPassword();
+        });
+        setTimeout(() => pwdInput.focus(), 100);
+    }
+
+    // 期間選択時の連動 (閲覧用)
+    document.getElementById('view-period-select').addEventListener('change', (e) => {
+        updateAlbumEventSelect('view', e.target.value);
+        document.getElementById('photo-grid').innerHTML = '';
+    });
+
+    // 期間選択時の連動 (アップロード用)
+    document.getElementById('upload-period-select').addEventListener('change', (e) => {
+        updateAlbumEventSelect('upload', e.target.value);
+    });
+
     document.getElementById('view-event-select').addEventListener('change', (e) => {
         if (e.target.value) {
             loadImages(e.target.value);
@@ -18,11 +53,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('comment-user').addEventListener('change', (e) => {
         currentUserId = e.target.value;
+        if (currentUserId) {
+            sessionStorage.setItem(ALBUM_USER_ID_KEY, currentUserId);
+        } else {
+            sessionStorage.removeItem(ALBUM_USER_ID_KEY);
+        }
+
+        // --- ユーザー切り替え時の不整合防止 ---
+        // ユーザーを切り替えた瞬間は、誰がどのリアクションをしたかの情報が最新ではないため、
+        // 読み込み完了まで一時的にリアクション表示をクリアするか、読み込みを待機する。
+        Object.keys(albumCache.reactions).forEach(pid => {
+            Object.keys(albumCache.reactions[pid]).forEach(cid => {
+                if (albumCache.reactions[pid][cid] && typeof albumCache.reactions[pid][cid] === 'object') {
+                    albumCache.reactions[pid][cid].userReaction = null;
+                }
+            });
+        });
+
         if (currentPhotoId) {
-            loadComments(currentPhotoId); // ユーザー切り替え時にボタン表示を更新
+            // キャッシュ（userReactionクリア済み）を使って即座に再描画し、その後最新を取得
+            renderCommentsUI(albumCache.comments[currentPhotoId], albumCache.reactions[currentPhotoId], false);
+            loadComments(currentPhotoId, true);
         }
     });
 });
+
+// 通信の競合を防ぐためのリクエストID管理
+const lastRequestIdMap = {};
 
 function switchAlbumTab(tab) {
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -37,6 +94,24 @@ function switchAlbumTab(tab) {
     }
 }
 
+function checkAlbumPassword() {
+    const pwdInput = document.getElementById('album-password');
+    if (pwdInput.value === 'sdkk1171') {
+        sessionStorage.setItem(ALBUM_AUTH_KEY, 'true');
+        showAlbumContent();
+    } else {
+        alert('パスワードが正しくありません。');
+        pwdInput.value = '';
+        pwdInput.focus();
+    }
+}
+
+function showAlbumContent() {
+    document.getElementById('album-auth-area').style.display = 'none';
+    document.getElementById('album-main-content').style.display = 'block';
+    loadAlbumInitData();
+}
+
 async function loadAlbumInitData() {
     showLoading(true);
     try {
@@ -44,24 +119,48 @@ async function loadAlbumInitData() {
         const data = await response.json();
 
         if (data.result === 'success') {
-            // 1. イベント一覧の処理
-            const viewSelect = document.getElementById('view-event-select');
-            const uploadSelect = document.getElementById('upload-event-select');
-            let eventOptions = '<option value="">-- イベントを選択 --</option>';
+            allEvents = data.events || [];
+            allPeriods = data.periods || [];
+            allMembers = data.members || [];
 
-            if (data.events && Array.isArray(data.events)) {
-                data.events.forEach(event => {
-                    const label = `${event.canceled ? '[中止] ' : ''}${formatDate(event.date)} ${event.time || ''} ${event.name}`;
-                    const value = `${event.date}_${event.name}`;
-                    eventOptions += `<option value="${value}">${label}</option>`;
-                });
+            // 期間プルダウンの生成
+            const periodOptions = '<option value="">-- 期間を選択 --</option>' +
+                allPeriods.map(p => {
+                    const label = p.isPast ? `${p.periodName}（終了）` : p.periodName;
+                    const style = p.isPast ? 'style="background-color: #666; color: white;"' : '';
+                    return `<option value="${p.periodId}" ${style}>${label}</option>`;
+                }).join('');
+
+            document.getElementById('view-period-select').innerHTML = periodOptions;
+            document.getElementById('upload-period-select').innerHTML = periodOptions;
+
+            // 現在の期間を自動選択
+            const now = new Date();
+            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+            // a.startdate または a.periodDate、a.enddate を使用して判定
+            const curPeriod = allPeriods.find(p => {
+                const start = p.startdate || p.periodDate || "";
+                const end = p.enddate || "";
+                return todayStr >= start && todayStr <= end;
+            });
+
+            if (curPeriod) {
+                const pid = curPeriod.periodId;
+                document.getElementById('view-period-select').value = pid;
+                document.getElementById('upload-period-select').value = pid;
+                updateAlbumEventSelect('view', pid);
+                updateAlbumEventSelect('upload', pid);
+            } else {
+                // 初期状態ではイベント選択を無効化 (期間が見つからない場合)
+                document.getElementById('view-event-select').innerHTML = '<option value="">-- 先に期間を選択してください --</option>';
+                document.getElementById('view-event-select').disabled = true;
+                document.getElementById('upload-event-select').innerHTML = '<option value="">-- 先に期間を選択してください --</option>';
+                document.getElementById('upload-event-select').disabled = true;
             }
-            viewSelect.innerHTML = eventOptions;
-            uploadSelect.innerHTML = eventOptions;
 
-            // 2. メンバー一覧の処理
-            if (data.members) {
-                allMembers = data.members;
+            // メンバー一覧の処理
+            if (allMembers) {
                 const userSelect = document.getElementById('comment-user');
                 let memberOptions = '<option value="">-- 名前を選択 --</option>';
 
@@ -83,6 +182,13 @@ async function loadAlbumInitData() {
                     memberOptions += `<option value="${m.id}">${m.name}</option>`;
                 });
                 userSelect.innerHTML = memberOptions;
+
+                // 保存されていたユーザーの復元
+                const savedUserId = sessionStorage.getItem(ALBUM_USER_ID_KEY);
+                if (savedUserId && Array.from(userSelect.options).some(opt => opt.value === savedUserId)) {
+                    userSelect.value = savedUserId;
+                    currentUserId = savedUserId;
+                }
             }
         }
     } catch (error) {
@@ -91,6 +197,37 @@ async function loadAlbumInitData() {
         showLoading(false);
     }
 }
+
+function updateAlbumEventSelect(tab, periodId) {
+    const eventSelect = document.getElementById(`${tab}-event-select`);
+    if (!periodId) {
+        eventSelect.innerHTML = '<option value="">-- 先に期間を選択してください --</option>';
+        eventSelect.disabled = true;
+        return;
+    }
+
+    const period = allPeriods.find(p => String(p.periodId) === String(periodId));
+    if (!period) {
+        eventSelect.innerHTML = '<option value="">-- 期間データが見つかりません --</option>';
+        eventSelect.disabled = true;
+        return;
+    }
+
+    // 期間内のイベントを絞り込み
+    const filteredEvents = allEvents.filter(e => e.date >= period.startdate && e.date <= period.enddate);
+
+    let eventOptions = '<option value="">-- イベントを選択 --</option>';
+    filteredEvents.forEach(event => {
+        const label = `${event.canceled ? '[中止] ' : ''}${formatDate(event.date)} ${event.time || ''} ${event.name}${event.isPast ? '（終了）' : ''}`;
+        const style = event.isPast ? 'style="background-color: #666; color: white;"' : '';
+        const value = `${event.date}_${event.name}`;
+        eventOptions += `<option value="${value}" ${style}>${label}</option>`;
+    });
+
+    eventSelect.innerHTML = eventOptions;
+    eventSelect.disabled = false;
+}
+
 
 async function handleUpload() {
     const eventName = document.getElementById('upload-event-select').value;
@@ -261,6 +398,8 @@ function openPhotoModal(url, photoId) {
     modalImg.src = url;
     modal.classList.add('active');
 
+    // コメントエリアを一旦クリア（前画面の残像防止）
+    document.getElementById('comment-list').innerHTML = '';
     // コメント入力欄をクリア
     document.getElementById('comment-text').value = '';
 
@@ -273,49 +412,178 @@ function closePhotoModal() {
     currentPhotoId = null;
 }
 
-async function loadComments(photoId) {
+async function loadComments(photoId, forceRefresh = false) {
     const commentList = document.getElementById('comment-list');
-    commentList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 1rem;">読み込み中...</p>';
+
+    // リクエストIDを記録（最新のリクエストのみを採用するため）
+    const requestId = Date.now();
+    lastRequestIdMap[photoId] = requestId;
+
+    // キャッシュがあれば即座に描画
+    if (!forceRefresh && albumCache.comments[photoId] && albumCache.reactions[photoId]) {
+        renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], true);
+    } else {
+        if (!forceRefresh) commentList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 1rem;">読み込み中...</p>';
+    }
 
     try {
-        const response = await fetch(`${GAS_URL}?action=getAlbumComments&photoId=${encodeURIComponent(photoId)}`);
-        const data = await response.json();
-        console.log('Comments data loaded:', data);
+        // userIdが未確定でも、一旦リクエストは投げる（全体集計のため）
+        // ただし、currentUserIdがsessionStorage等から復元される可能性があるため最新を見る
+        const effectiveUserId = currentUserId || sessionStorage.getItem(ALBUM_USER_ID_KEY) || '';
+        const reactionUrl = `${GAS_URL}?action=get_reactions&photoId=${photoId}&userId=${effectiveUserId}`;
+        const [commentData, reactionData] = await Promise.all([
+            fetch(`${GAS_URL}?action=getAlbumComments&photoId=${photoId}`).then(res => res.json()),
+            fetch(reactionUrl).then(res => res.json())
+        ]);
 
-        if (!data.comments || data.comments.length === 0) {
-            commentList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 1rem;">まだコメントはありません。</p>';
-            return;
-        }
+        // 最新のリクエストでなければ無視（不整合防止）
+        if (lastRequestIdMap[photoId] !== requestId) return;
 
-        // コメントを表示
-        commentList.innerHTML = data.comments.map(c => {
-            const isOwner = currentUserId && String(c.postuserid) === String(currentUserId);
-            const ownerActions = isOwner ? `
-                <div class="comment-actions">
-                    <button class="btn-text" onclick="updateAlbumComment('${c.commentid}', '${c.postuserid}')">編集</button>
-                    <button class="btn-text text-danger" onclick="deleteAlbumComment('${c.commentid}', '${c.postuserid}')">削除</button>
-                </div>
-            ` : '';
+        // キャッシュを更新
+        albumCache.comments[photoId] = commentData.comments || [];
+        albumCache.reactions[photoId] = reactionData || {};
 
-            return `
-                <div class="comment-item">
-                    <div class="comment-header">
-                        <span class="comment-author">${escapeHtml(c.username)}</span>
-                        <span class="comment-date">${c.timestamp}</span>
-                    </div>
-                    <div class="comment-text">${escapeHtml(c.commenttext)}</div>
-                    ${ownerActions}
-                </div>
-            `;
-        }).join('');
-
-        commentList.scrollTop = commentList.scrollHeight;
+        renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], true);
 
     } catch (error) {
         console.error('Error loading comments:', error);
-        commentList.innerHTML = '<p style="color: red; text-align: center; padding: 1rem;">読み込みに失敗しました。</p>';
+        if (lastRequestIdMap[photoId] === requestId && !albumCache.comments[photoId]) {
+            commentList.innerHTML = '<p style="color: red; text-align: center; padding: 1rem;">読み込みに失敗しました。</p>';
+        }
     }
 }
+
+/**
+ * コメントとリアクションを描画する内部関数
+ * @param {boolean} shouldScroll スクロールを一番下に移動させるか
+ */
+function renderCommentsUI(comments, reactionData, shouldScroll = false) {
+    const commentList = document.getElementById('comment-list');
+    if (!comments || comments.length === 0) {
+        commentList.innerHTML = '<p class="text-muted" style="text-align: center; padding: 1rem;">まだコメントはありません。</p>';
+        return;
+    }
+
+    commentList.innerHTML = comments.map(c => {
+        const isOwner = currentUserId && String(c.postuserid) === String(currentUserId);
+        const ownerActions = isOwner ? `
+            <div class="comment-actions">
+                <button class="btn-text" onclick="updateAlbumComment('${c.commentid}', '${c.postuserid}')">編集</button>
+                <button class="btn-text text-danger" onclick="deleteAlbumComment('${c.commentid}', '${c.postuserid}')">削除</button>
+            </div>
+        ` : '';
+
+        const reactions = reactionData[c.commentid] || { like: 0, love: 0, laugh: 0, party: 0, userReaction: null };
+        const reactionTypes = [
+            { type: 'like', emoji: '👍' },
+            { type: 'love', emoji: '❤️' },
+            { type: 'laugh', emoji: '😂' },
+            { type: 'party', emoji: '🎉' }
+        ];
+
+        const reactionHtml = `
+            <div class="reactions">
+                ${reactionTypes.map(r => {
+            const isActive = reactions.userReaction === r.type ? 'active' : '';
+            const count = reactions[r.type] || 0;
+            return `<span class="reaction ${isActive}" data-type="${r.type}" onclick="toggleReaction('${c.commentid}', '${r.type}')">${r.emoji} ${count}</span>`;
+        }).join('')}
+            </div>
+        `;
+
+        return `
+            <div class="comment-item" id="comment-${c.commentid}">
+                <div class="comment-header">
+                    <span class="comment-author">${escapeHtml(c.username)}</span>
+                    <span class="comment-date">${c.timestamp}</span>
+                </div>
+                <div class="comment-text">${escapeHtml(c.commenttext)}</div>
+                ${reactionHtml}
+                ${ownerActions}
+            </div>
+        `;
+    }).join('');
+
+    if (shouldScroll) {
+        commentList.scrollTop = commentList.scrollHeight;
+    }
+}
+
+
+async function toggleReaction(commentId, reactionType) {
+    if (!currentUserId) {
+        alert('名前を選択してください。');
+        return;
+    }
+
+    const photoId = currentPhotoId;
+    if (!albumCache.reactions[photoId]) {
+        albumCache.reactions[photoId] = {};
+    }
+    if (!albumCache.reactions[photoId][commentId]) {
+        albumCache.reactions[photoId][commentId] = { like: 0, love: 0, laugh: 0, party: 0, userReaction: null };
+    }
+
+    const oldReactions = JSON.parse(JSON.stringify(albumCache.reactions[photoId])); // バックアップ
+    const commentReactions = albumCache.reactions[photoId][commentId];
+
+    // --- 楽観的UI更新 ---
+    const isRemove = commentReactions.userReaction === reactionType;
+    if (isRemove) {
+        commentReactions.userReaction = null;
+        commentReactions[reactionType] = Math.max(0, (commentReactions[reactionType] || 0) - 1);
+    } else {
+        // 他のリアクションを消して付け替える、または新規
+        // もし userReaction が null の場合でも、サーバー側で重複を弾くようにしているが、
+        // フロントエンドでも可能な限り「自分が既に押しているものがないか」を確認する
+        if (commentReactions.userReaction && commentReactions.userReaction !== reactionType) {
+            const prevType = commentReactions.userReaction;
+            commentReactions[prevType] = Math.max(0, (commentReactions[prevType] || 0) - 1);
+        }
+        commentReactions.userReaction = reactionType;
+        commentReactions[reactionType] = (commentReactions[reactionType] || 0) + 1;
+    }
+
+
+    // 即座に再描画（楽観的）
+    renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], false);
+
+    const requestId = Date.now();
+    lastRequestIdMap[photoId] = requestId;
+
+    try {
+        const response = await fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'save_reaction',
+                photoId: photoId,
+                commentId: commentId,
+                userId: currentUserId,
+                reactionType: reactionType
+            })
+        });
+
+        const result = await response.json();
+
+        // 最新のリクエストでなければ無視
+        if (lastRequestIdMap[photoId] !== requestId) return;
+
+        // サーバーからの最新データ（result.data）でキャッシュを上書き同期
+        albumCache.reactions[photoId] = result.data || {};
+        renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], false);
+
+    } catch (error) {
+        console.error('Error toggling reaction:', error);
+        // エラー時はロールバック
+        if (lastRequestIdMap[photoId] === requestId) {
+            albumCache.reactions[photoId] = oldReactions;
+            renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], false);
+            alert('リアクションの反映に失敗しました。');
+        }
+    }
+}
+
+
 
 async function saveComment() {
     const userSelect = document.getElementById('comment-user');
@@ -332,8 +600,17 @@ async function saveComment() {
         return;
     }
 
+    // セレクターを HTML 構造に合わせて修正 (.comment-form 内の button)
+    const submitBtn = document.querySelector('.comment-form button');
+    const originalBtnText = submitBtn ? submitBtn.innerText : '送信';
+
     try {
-        showLoading(true);
+        // 連打防止: ボタンがある場合は無効化
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerText = '送信中...';
+        }
+
         const response = await fetch(GAS_URL, {
             method: 'POST',
             body: JSON.stringify({
@@ -348,7 +625,8 @@ async function saveComment() {
         const result = await response.json();
         if (result.result === 'success') {
             textField.value = '';
-            await loadComments(currentPhotoId);
+            // 保存後は強制的にリフレッシュ
+            await loadComments(currentPhotoId, true);
         } else {
             alert('保存に失敗しました: ' + (result.error || '不明なエラー'));
         }
@@ -356,7 +634,11 @@ async function saveComment() {
         console.error('Error saving comment:', error);
         alert('通信エラーが発生しました。');
     } finally {
-        showLoading(false);
+        // ボタンを復元
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerText = originalBtnText;
+        }
     }
 }
 
@@ -383,7 +665,7 @@ async function updateAlbumComment(commentId, postUserId) {
 
         const result = await response.json();
         if (result.result === 'success') {
-            await loadComments(currentPhotoId);
+            await loadComments(currentPhotoId, true);
         } else {
             alert('更新に失敗しました: ' + (result.error || '不明なエラー'));
         }
@@ -412,7 +694,7 @@ async function deleteAlbumComment(commentId, postUserId) {
 
         const result = await response.json();
         if (result.result === 'success') {
-            await loadComments(currentPhotoId);
+            await loadComments(currentPhotoId, true);
         } else {
             alert('削除に失敗しました: ' + (result.error || '不明なエラー'));
         }
