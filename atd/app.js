@@ -1,5 +1,5 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycbzeNFOJjieIWPvyoHggZyaNZtaEfdZEl9koG95q0pzBFrQf-Re0cg7-vkF1vCiUNmIShw/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbz9jRPw6VGYaziLsFeFmCdC2loRIJOa2NzMrTGSsDWJTaz0VbnTcapLpnOikiFjWF2O2g/exec';
 
 // App State
 const state = {
@@ -29,7 +29,10 @@ const statusListArea = document.getElementById('status-list-area');
 const adminPeriodSelect = document.getElementById('admin-period-list-select');
 const adminMemberSelect = document.getElementById('admin-member-list-select');
 const adminEventSelect = document.getElementById('admin-event-list-select');
+const adminEventPeriodSelect = document.getElementById('admin-event-period-select');
 const eventPeriodSelect = document.getElementById('event-period-id');
+const adminPhotoPeriodSelect = document.getElementById('admin-photo-period-select');
+const adminPhotoEventSelect = document.getElementById('admin-photo-event-select');
 
 // Modal Elements
 const editModal = document.getElementById('edit-modal');
@@ -84,6 +87,23 @@ async function init() {
   if (adminPwdInput) {
     adminPwdInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') checkAdminPassword();
+    });
+  }
+
+  // Photo Management Select Listeners
+  if (adminPhotoPeriodSelect) {
+    adminPhotoPeriodSelect.addEventListener('change', () => {
+      updateAdminPhotoEventSelect(adminPhotoPeriodSelect.value);
+    });
+  }
+  if (adminPhotoEventSelect) {
+    adminPhotoEventSelect.addEventListener('change', () => {
+      loadAdminPhotos();
+    });
+  }
+  if (adminEventPeriodSelect) {
+    adminEventPeriodSelect.addEventListener('change', () => {
+      updateAdminEventSelect(adminEventPeriodSelect.value);
     });
   }
 }
@@ -246,6 +266,7 @@ function renderAdminAccess() {
   if (state.isAdminAuthenticated) {
     authArea.style.display = 'none';
     adminContent.style.display = 'block';
+    loadAdminPhotos(); // もし認証済みなら写真一覧をロード
   } else {
     authArea.style.display = 'block';
     adminContent.style.display = 'none';
@@ -253,6 +274,128 @@ function renderAdminAccess() {
     if (passwordInput) {
       setTimeout(() => passwordInput.focus(), 100);
     }
+  }
+}
+
+async function loadAdminPhotos() {
+  const container = document.getElementById('admin-photo-list');
+  if (!container) return;
+
+  const eventName = adminPhotoEventSelect ? adminPhotoEventSelect.value : '';
+  if (!eventName) {
+    container.innerHTML = '<p style="text-align: center; color: #999;">イベントを選択してください。</p>';
+    return;
+  }
+
+  container.innerHTML = '<p style="text-align: center; color: #999; padding: 2rem;">読み込み中...</p>';
+
+  if (typeof google === 'undefined' || !google.script || !google.script.run) {
+    console.warn('google.script.run is not available. Using API fallback for dev environment.');
+    try {
+      const response = await fetch(`${API_URL}?action=get_admin_photos`);
+      const res = await response.json();
+      const filtered = (res.photos || []).filter(p => p.eventname === eventName);
+      renderAdminPhotoList(filtered);
+    } catch (err) {
+      console.error('Failed to load admin photos via API:', err);
+      container.innerHTML = '<p style="text-align: center; color: red; padding: 2rem;">読み込みエラーが発生しました。</p>';
+    }
+    return;
+  }
+
+  // GAS本番環境での実行
+  google.script.run
+    .withSuccessHandler((photos) => {
+      const filtered = (photos || []).filter(p => p.eventname === eventName);
+      renderAdminPhotoList(filtered);
+    })
+    .withFailureHandler((err) => {
+      console.error('Failed to load admin photos via GAS:', err);
+      container.innerHTML = '<p style="text-align: center; color: red; padding: 2rem;">読み込みエラーが発生しました。</p>';
+    })
+    .getAllPhotos();
+}
+
+function renderAdminPhotoList(photos) {
+  const container = document.getElementById('admin-photo-list');
+  if (photos && photos.length > 0) {
+    container.innerHTML = photos.map(p => {
+      return `
+        <div class="admin-photo-item" id="photo-${p.photoid}">
+          <img src="${p.imageurl}" class="admin-photo-thumb" loading="lazy">
+          <div class="admin-photo-info">
+            <div title="${p.eventname}"><strong>イベント:</strong> ${p.eventname}</div>
+            <div title="${p.contributor}"><strong>投稿者:</strong> ${p.contributor}</div>
+            <div title="${p.timestamp}"><strong>日時:</strong> ${p.timestamp}</div>
+            <div title="${p.photoid}" style="font-size: 0.65rem; color: #999;"><strong>ID:</strong> ${p.photoid}</div>
+          </div>
+          <div class="admin-photo-actions">
+            <button class="btn btn-danger btn-sm" style="width:100%" onclick="deleteAdminPhoto('${p.photoid}')">削除</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } else {
+    container.innerHTML = '<p style="text-align: center; color: #999; padding: 2rem;">写真がありません。</p>';
+  }
+}
+
+async function deleteAdminPhoto(photoId) {
+  if (!confirm('この写真を削除しますか？')) return;
+
+  console.log('Starting deletion for photo:', photoId);
+  setLoading(true);
+
+  const cleanUp = (success, error) => {
+    setLoading(false);
+    if (success) {
+      console.log('Deletion successful for:', photoId);
+      finishDeletion(photoId);
+    } else {
+      console.error('Deletion failed:', error);
+      alert('削除に失敗しました: ' + (error || '不明なエラー'));
+    }
+  };
+
+  if (typeof google === 'undefined' || !google.script || !google.script.run) {
+    console.warn('google.script.run is not available. Using API fallback.');
+    try {
+      const res = await apiCall('delete_photo', { photoId });
+      cleanUp(res.result === 'success', res.error);
+    } catch (err) {
+      cleanUp(false, err.toString());
+    }
+    return;
+  }
+
+  // GAS本番環境での実行
+  console.log('Calling GAS deletePhoto...');
+  google.script.run
+    .withSuccessHandler((res) => {
+      console.log('GAS deletePhoto response:', res);
+      cleanUp(res.success, res.error);
+    })
+    .withFailureHandler((err) => {
+      cleanUp(false, err.toString());
+    })
+    .deletePhoto(photoId);
+}
+
+function finishDeletion(photoId) {
+  const el = document.getElementById(`photo-${photoId}`);
+  if (el) {
+    el.style.opacity = '0.5';
+    el.style.pointerEvents = 'none';
+    setTimeout(() => {
+      el.remove();
+      // もし最後の1枚だったらメッセージを表示
+      const container = document.getElementById('admin-photo-list');
+      if (container && container.children.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #999; padding: 2rem;">写真がありません。</p>';
+      }
+    }, 500);
+  } else {
+    loadAdminPhotos();
   }
 }
 
@@ -320,7 +463,7 @@ function updateEventSelect(periodId) {
 
   // GAS側で期間内かつ昇順ソート済み
   // 日付の古い順にソート（昇順）
-  const filteredEvents = state.events
+  const periodEvents = state.events
     .filter(e => e.date >= period.startdate && e.date <= period.enddate)
     .sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -328,31 +471,7 @@ function updateEventSelect(periodId) {
     });
 
   const currentEventId = eventSelect.value;
-  const activeEvents = filteredEvents.filter(e => !e.isPast);
-  const pastEvents = filteredEvents.filter(e => e.isPast);
-
-  let html = '<option value="">-- イベントを選択 --</option>';
-
-  if (pastEvents.length > 0) {
-    html += '<optgroup label="終了済み">';
-    html += pastEvents.map(e => {
-      const dateLabel = formatDate(e.eventDate);
-      const canceledPrefix = e.canceled ? '[中止] ' : '';
-      return `<option value="${e.eventId}" ${String(e.eventId) === String(currentEventId) ? 'selected' : ''} style="background-color: #666; color: white;">【終了】 ${canceledPrefix}${dateLabel} ${e.time || ''} ${e.eventName}</option>`;
-    }).join('');
-    html += '</optgroup>';
-  }
-
-  if (activeEvents.length > 0) {
-    html += '<optgroup label="開催予定">';
-    html += activeEvents.map(e => {
-      const dateLabel = formatDate(e.eventDate);
-      const canceledPrefix = e.canceled ? '[中止] ' : '';
-      return `<option value="${e.eventId}" ${String(e.eventId) === String(currentEventId) ? 'selected' : ''}>${canceledPrefix}${dateLabel} ${e.time || ''} ${e.eventName}</option>`;
-    }).join('');
-    html += '</optgroup>';
-  }
-
+  const html = renderEventOptions(periodEvents, currentEventId);
   eventSelect.innerHTML = html;
 
   eventSelect.disabled = false;
@@ -649,6 +768,9 @@ function renderStatusUI() {
 
 // --- Admin Logic ---
 function renderAdminUI() {
+  const today = getTodayStr();
+  const curPeriod = state.periods.find(p => today >= p.startdate && today <= p.enddate);
+
   if (adminPeriodSelect) {
     adminPeriodSelect.innerHTML = '<option value="">-- 期間を選択 --</option>' +
       state.periods.map(p => `<option value="${p.id}">${p.name} (${p.startdate} 〜 ${p.enddate})</option>`).join('');
@@ -656,19 +778,76 @@ function renderAdminUI() {
   if (eventPeriodSelect) {
     eventPeriodSelect.innerHTML = '<option value="">-- 期間を選択 --</option>' +
       state.periods.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    if (curPeriod && !eventPeriodSelect.value) eventPeriodSelect.value = curPeriod.id;
   }
   if (adminMemberSelect) {
     adminMemberSelect.innerHTML = '<option value="">-- メンバーを選択 --</option>' +
       state.members.map(m => `<option value="${m.id}">${m.name}${m.affiliation ? ` (${m.affiliation})` : ''}</option>`).join('');
   }
-  if (adminEventSelect) {
-    adminEventSelect.innerHTML = '<option value="">-- イベントを選択 --</option>' +
-      [...state.events].sort((a, b) => {
-        if (a.date !== b.date) return b.date.localeCompare(a.date);
-        return (b.time || "").localeCompare(a.time || "");
-      })
-        .map(e => `<option value="${e.id}">${e.canceled ? '[中止] ' : ''}${formatDate(e.date)} ${e.time || ''} ${e.title} @ ${e.location}</option>`).join('');
+
+  // Event Edit Period Select
+  if (adminEventPeriodSelect) {
+    const prevVal = adminEventPeriodSelect.value;
+    adminEventPeriodSelect.innerHTML = '<option value="">-- 期間を選択 --</option>' +
+      state.periods.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+    if (!prevVal && curPeriod) {
+      adminEventPeriodSelect.value = curPeriod.id;
+      updateAdminEventSelect(curPeriod.id);
+    } else if (prevVal) {
+      adminEventPeriodSelect.value = prevVal;
+    }
   }
+
+  // Photo Management Period Select
+  if (adminPhotoPeriodSelect) {
+    const prevVal = adminPhotoPeriodSelect.value;
+    adminPhotoPeriodSelect.innerHTML = '<option value="">-- 期間を選択 --</option>' +
+      state.periods.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+    if (!prevVal && curPeriod) {
+      adminPhotoPeriodSelect.value = curPeriod.id;
+      updateAdminPhotoEventSelect(curPeriod.id);
+    } else if (prevVal) {
+      adminPhotoPeriodSelect.value = prevVal;
+    }
+  }
+}
+
+function updateAdminEventSelect(periodId) {
+  if (!adminEventSelect) return;
+  if (!periodId) {
+    adminEventSelect.innerHTML = '<option value="">-- 先に期間を選択してください --</option>';
+    adminEventSelect.disabled = true;
+    return;
+  }
+
+  const period = state.periods.find(p => String(p.id) === String(periodId));
+  if (!period) return;
+
+  const periodEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate);
+
+  adminEventSelect.innerHTML = renderEventOptions(periodEvents, null, 'id');
+  adminEventSelect.disabled = false;
+}
+
+function updateAdminPhotoEventSelect(periodId) {
+  if (!adminPhotoEventSelect) return;
+  if (!periodId) {
+    adminPhotoEventSelect.innerHTML = '<option value="">-- 先に期間を選択してください --</option>';
+    adminPhotoEventSelect.disabled = true;
+    document.getElementById('admin-photo-list').innerHTML = '<p style="text-align: center; color: #999;">イベントを選択してください。</p>';
+    return;
+  }
+
+  const period = state.periods.find(p => String(p.id) === String(periodId));
+  if (!period) return;
+
+  const periodEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate);
+
+  adminPhotoEventSelect.innerHTML = renderEventOptions(periodEvents, null, 'photokey');
+  adminPhotoEventSelect.disabled = false;
+  document.getElementById('admin-photo-list').innerHTML = '<p style="text-align: center; color: #999;">イベントを選択してください。</p>';
 }
 
 async function handleAdminAction(type, action) {
@@ -889,4 +1068,51 @@ function formatDate(dateStr) {
   const d = new Date(dateStr);
   const days = ['日', '月', '火', '水', '木', '金', '土'];
   return `${d.getMonth() + 1}/${d.getDate()}(${days[d.getDay()]})`;
+}
+
+/**
+ * イベントプルダウンの共通描画関数
+ * @param {Array} events 
+ * @param {String} currentId 
+ * @param {String} valueType 'eventId'(default), 'id', 'photokey'
+ */
+function renderEventOptions(events, currentId = null, valueType = 'eventId') {
+  const today = getTodayStr();
+  // 昇順ソート
+  const sorted = [...events].sort((a, b) => a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || ""));
+
+  const pastEvents = sorted.filter(e => e.date < today);
+  const activeEvents = sorted.filter(e => e.date >= today);
+
+  const getVal = (e) => {
+    if (valueType === 'id') return e.id;
+    if (valueType === 'photokey') return `${e.date}_${e.title}`;
+    return e.eventId;
+  };
+
+  let html = '<option value="">-- イベントを選択 --</option>';
+
+  if (pastEvents.length > 0) {
+    html += '<optgroup label="終了済み">';
+    html += pastEvents.map(e => {
+      const val = getVal(e);
+      const isSelected = currentId && String(val) === String(currentId) ? 'selected' : '';
+      const canceledPrefix = e.canceled ? '[中止] ' : '';
+      return `<option value="${val}" ${isSelected} style="background-color: #666; color: white;">【終了】 ${canceledPrefix}${formatDate(e.date)} ${e.time || ''} ${e.title}</option>`;
+    }).join('');
+    html += '</optgroup>';
+  }
+
+  if (activeEvents.length > 0) {
+    html += '<optgroup label="開催予定">';
+    html += activeEvents.map(e => {
+      const val = getVal(e);
+      const isSelected = currentId && String(val) === String(currentId) ? 'selected' : '';
+      const canceledPrefix = e.canceled ? '[中止] ' : '';
+      return `<option value="${val}" ${isSelected}>${canceledPrefix}${formatDate(e.date)} ${e.time || ''} ${e.title}</option>`;
+    }).join('');
+    html += '</optgroup>';
+  }
+
+  return html;
 }
