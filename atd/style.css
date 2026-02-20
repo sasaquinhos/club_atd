@@ -596,3 +596,45 @@ td {
 .text-danger {
   color: #ef4444 !important;
 }
+
+/* Admin Photo Grid */
+.admin-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.admin-photo-item {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-photo-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  background: #f1f5f9;
+}
+
+.admin-photo-info {
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  flex: 1;
+}
+
+.admin-photo-info div {
+  margin-bottom: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-photo-actions {
+  padding: 0.5rem;
+  border-top: 1px solid #f1f5f9;
+}
