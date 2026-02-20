@@ -162,8 +162,13 @@
           <hr>
           <div class="form-group">
             <label>イベントを編集・削除</label>
+            <div class="form-group mb-1">
+              <select id="admin-event-period-select" style="font-size: 0.85rem; padding: 0.3rem;"></select>
+            </div>
             <div class="inline-form">
-              <select id="admin-event-list-select"></select>
+              <select id="admin-event-list-select" disabled>
+                <option value="">-- 先に期間を選択してください --</option>
+              </select>
             </div>
             <div class="item-actions">
               <button class="btn btn-sm" onclick="handleAdminAction('event', 'edit')">選択したイベントを編集</button>
@@ -192,6 +197,30 @@
               <button class="btn btn-sm" onclick="handleAdminAction('member', 'edit')">選択したメンバーを編集</button>
               <button class="btn btn-danger btn-sm" onclick="handleAdminAction('member', 'delete')">削除</button>
             </div>
+          </div>
+        </div>
+
+        <!-- Photo Management -->
+        <div class="card">
+          <div class="item-header">
+            <h3>写真管理</h3>
+          </div>
+          <p style="margin-bottom: 1rem; font-size: 0.9rem; color: #666;">期間とイベントを選択して、アップロードされた写真を管理します。</p>
+
+          <div class="form-group">
+            <label>1. 期間を選択</label>
+            <select id="admin-photo-period-select"></select>
+          </div>
+          <div class="form-group">
+            <label>2. イベントを選択</label>
+            <select id="admin-photo-event-select" disabled>
+              <option value="">-- 先に期間を選択してください --</option>
+            </select>
+          </div>
+
+          <div id="admin-photo-list" class="admin-photo-grid">
+            <!-- Photos will be loaded here -->
+            <p style="text-align: center; color: #999;">イベントを選択してください。</p>
           </div>
         </div>
       </div>
