@@ -1,5 +1,5 @@
 // GAS Web App URL (デプロイ後に取得したURLをここに記載してください)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwsF3RR095GT3OHAXdbjMf_rhWnssLuJNZX7o-cAH4bqCOfLs8pwjrNdj1rHKb45fiEYA/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz9jRPw6VGYaziLsFeFmCdC2loRIJOa2NzMrTGSsDWJTaz0VbnTcapLpnOikiFjWF2O2g/exec';
 
 let allMembers = [];
 let allEvents = [];
@@ -51,32 +51,47 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // 投稿者名の連動 (アップロード用)
+    document.getElementById('upload-user').addEventListener('change', (e) => {
+        syncUserSelection(e.target.value);
+    });
+
     document.getElementById('comment-user').addEventListener('change', (e) => {
-        currentUserId = e.target.value;
-        if (currentUserId) {
-            sessionStorage.setItem(ALBUM_USER_ID_KEY, currentUserId);
-        } else {
-            sessionStorage.removeItem(ALBUM_USER_ID_KEY);
-        }
-
-        // --- ユーザー切り替え時の不整合防止 ---
-        // ユーザーを切り替えた瞬間は、誰がどのリアクションをしたかの情報が最新ではないため、
-        // 読み込み完了まで一時的にリアクション表示をクリアするか、読み込みを待機する。
-        Object.keys(albumCache.reactions).forEach(pid => {
-            Object.keys(albumCache.reactions[pid]).forEach(cid => {
-                if (albumCache.reactions[pid][cid] && typeof albumCache.reactions[pid][cid] === 'object') {
-                    albumCache.reactions[pid][cid].userReaction = null;
-                }
-            });
-        });
-
-        if (currentPhotoId) {
-            // キャッシュ（userReactionクリア済み）を使って即座に再描画し、その後最新を取得
-            renderCommentsUI(albumCache.comments[currentPhotoId], albumCache.reactions[currentPhotoId], false);
-            loadComments(currentPhotoId, true);
-        }
+        syncUserSelection(e.target.value);
     });
 });
+
+/**
+ * ユーザー選択の同期と永続化
+ */
+function syncUserSelection(userId) {
+    currentUserId = userId;
+    const uploadUserSelect = document.getElementById('upload-user');
+    const commentUserSelect = document.getElementById('comment-user');
+
+    if (uploadUserSelect) uploadUserSelect.value = userId;
+    if (commentUserSelect) commentUserSelect.value = userId;
+
+    if (userId) {
+        sessionStorage.setItem(ALBUM_USER_ID_KEY, userId);
+    } else {
+        sessionStorage.removeItem(ALBUM_USER_ID_KEY);
+    }
+
+    // --- ユーザー切り替え時の不整合防止 ---
+    Object.keys(albumCache.reactions).forEach(pid => {
+        Object.keys(albumCache.reactions[pid]).forEach(cid => {
+            if (albumCache.reactions[pid][cid] && typeof albumCache.reactions[pid][cid] === 'object') {
+                albumCache.reactions[pid][cid].userReaction = null;
+            }
+        });
+    });
+
+    if (currentPhotoId) {
+        renderCommentsUI(albumCache.comments[currentPhotoId], albumCache.reactions[currentPhotoId], false);
+        loadComments(currentPhotoId, true);
+    }
+}
 
 // 通信の競合を防ぐためのリクエストID管理
 const lastRequestIdMap = {};
@@ -173,7 +188,8 @@ async function loadAlbumInitData() {
 
             // メンバー一覧の処理
             if (allMembers) {
-                const userSelect = document.getElementById('comment-user');
+                const commentUserSelect = document.getElementById('comment-user');
+                const uploadUserSelect = document.getElementById('upload-user');
                 let memberOptions = '<option value="">-- 名前を選択 --</option>';
 
                 // 現在の月を取得 (YYYY-MM)
@@ -193,13 +209,19 @@ async function loadAlbumInitData() {
                 activeMembers.forEach(m => {
                     memberOptions += `<option value="${m.id}">${m.name}</option>`;
                 });
-                userSelect.innerHTML = memberOptions;
+
+                if (commentUserSelect) commentUserSelect.innerHTML = memberOptions;
+                if (uploadUserSelect) uploadUserSelect.innerHTML = memberOptions;
 
                 // 保存されていたユーザーの復元
                 const savedUserId = sessionStorage.getItem(ALBUM_USER_ID_KEY);
-                if (savedUserId && Array.from(userSelect.options).some(opt => opt.value === savedUserId)) {
-                    userSelect.value = savedUserId;
-                    currentUserId = savedUserId;
+                if (savedUserId) {
+                    const exists = Array.from(activeMembers).some(m => String(m.id) === String(savedUserId));
+                    if (exists) {
+                        currentUserId = savedUserId;
+                        if (commentUserSelect) commentUserSelect.value = savedUserId;
+                        if (uploadUserSelect) uploadUserSelect.value = savedUserId;
+                    }
                 }
             }
         }
@@ -268,8 +290,11 @@ async function handleUpload() {
     const fileInput = document.getElementById('photo-input');
     const files = fileInput.files;
 
-    if (!eventName || files.length === 0) {
-        alert('イベントと写真を選択してください。');
+    const userSelect = document.getElementById('upload-user');
+    const contributor = userSelect.options[userSelect.selectedIndex]?.text || '匿名';
+
+    if (!userSelect.value) {
+        alert('投稿者名を選択してください。');
         return;
     }
 
@@ -292,12 +317,13 @@ async function handleUpload() {
                     action: 'upload_album_image',
                     eventName: eventName,
                     fileName: file.name,
-                    fileData: base64Data
+                    fileData: base64Data,
+                    contributor: contributor
                 })
             });
 
             const result = await response.json();
-            console.log('Upload result:', result); // Debug log
+            console.log('Upload result:', result);
 
             if (result.result === 'success') {
                 successCount++;
@@ -324,10 +350,8 @@ async function handleUpload() {
         alert(`${successCount} / ${files.length} 枚のアップロードに成功しました。\n\n【失敗したファイル】\n${errorSummary}`);
     }
 
-    // ファイル選択をクリア
     fileInput.value = '';
 
-    // 閲覧タブのリロード（同じイベントを選択していた場合）
     if (document.getElementById('view-event-select').value === eventName) {
         loadImages(eventName);
     }
@@ -348,8 +372,6 @@ async function loadImages(eventName) {
 
         grid.innerHTML = '';
         data.images.forEach(img => {
-            // URL変換: uc?id=... -> thumbnail?sz=w1000&id=...
-            // これにより、既存の画像も新しい形式で表示されるようになります
             let displayUrl = img.url;
             if (displayUrl.includes('drive.google.com/uc?id=')) {
                 displayUrl = displayUrl.replace('drive.google.com/uc?id=', 'drive.google.com/thumbnail?sz=w1000&id=');
@@ -357,8 +379,7 @@ async function loadImages(eventName) {
 
             const item = document.createElement('div');
             item.className = 'photo-item';
-            // photoIdとして、とりあえずfileNameを使用（一意であることを期待）
-            const photoId = img.fileName;
+            const photoId = img.photoId || img.fileName;
             item.innerHTML = `
                 <img src="${displayUrl}" alt="${img.fileName}" onclick="openPhotoModal('${displayUrl}', '${photoId}')" onerror="this.src='https://placehold.co/600x400?text=Load+Error'">
             `;
@@ -379,12 +400,6 @@ function readFileAsBase64(file) {
     });
 }
 
-/**
- * 画像を圧縮してBase64で返す
- * @param {File} file 
- * @param {number} maxWidth 最大幅/高さ
- * @param {number} quality JPEG画質 (0.0 - 1.0)
- */
 function compressImage(file, maxWidth, quality) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -413,8 +428,6 @@ function compressImage(file, maxWidth, quality) {
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
-
-                // canvas.toDataURL の第2引数で画質指定(JPEGのみ有効)
                 resolve(canvas.toDataURL('image/jpeg', quality));
             };
             img.onerror = error => reject(error);
@@ -431,13 +444,8 @@ function openPhotoModal(url, photoId) {
     const modalImg = document.getElementById('modal-img');
     modalImg.src = url;
     modal.classList.add('active');
-
-    // コメントエリアを一旦クリア（前画面の残像防止）
     document.getElementById('comment-list').innerHTML = '';
-    // コメント入力欄をクリア
     document.getElementById('comment-text').value = '';
-
-    // コメント読み込み
     loadComments(photoId);
 }
 
@@ -448,12 +456,9 @@ function closePhotoModal() {
 
 async function loadComments(photoId, forceRefresh = false) {
     const commentList = document.getElementById('comment-list');
-
-    // リクエストIDを記録（最新のリクエストのみを採用するため）
     const requestId = Date.now();
     lastRequestIdMap[photoId] = requestId;
 
-    // キャッシュがあれば即座に描画
     if (!forceRefresh && albumCache.comments[photoId] && albumCache.reactions[photoId]) {
         renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], true);
     } else {
@@ -461,19 +466,20 @@ async function loadComments(photoId, forceRefresh = false) {
     }
 
     try {
-        // userIdが未確定でも、一旦リクエストは投げる（全体集計のため）
-        // ただし、currentUserIdがsessionStorage等から復元される可能性があるため最新を見る
         const effectiveUserId = currentUserId || sessionStorage.getItem(ALBUM_USER_ID_KEY) || '';
-        const reactionUrl = `${GAS_URL}?action=get_reactions&photoId=${photoId}&userId=${effectiveUserId}`;
+        const encodedPhotoId = encodeURIComponent(photoId);
+        const encodedUserId = encodeURIComponent(effectiveUserId);
+
+        const commentUrl = `${GAS_URL}?action=getAlbumComments&photoId=${encodedPhotoId}`;
+        const reactionUrl = `${GAS_URL}?action=get_reactions&photoId=${encodedPhotoId}&userId=${encodedUserId}`;
+
         const [commentData, reactionData] = await Promise.all([
-            fetch(`${GAS_URL}?action=getAlbumComments&photoId=${photoId}`).then(res => res.json()),
+            fetch(commentUrl).then(res => res.json()),
             fetch(reactionUrl).then(res => res.json())
         ]);
 
-        // 最新のリクエストでなければ無視（不整合防止）
         if (lastRequestIdMap[photoId] !== requestId) return;
 
-        // キャッシュを更新
         albumCache.comments[photoId] = commentData.comments || [];
         albumCache.reactions[photoId] = reactionData || {};
 
@@ -481,16 +487,17 @@ async function loadComments(photoId, forceRefresh = false) {
 
     } catch (error) {
         console.error('Error loading comments:', error);
-        if (lastRequestIdMap[photoId] === requestId && !albumCache.comments[photoId]) {
-            commentList.innerHTML = '<p style="color: red; text-align: center; padding: 1rem;">読み込みに失敗しました。</p>';
+        if (lastRequestIdMap[photoId] === requestId) {
+            if (!albumCache.comments[photoId]) {
+                commentList.innerHTML = '<p style="color: red; text-align: center; padding: 1rem;">読み込みに失敗しました。</p>';
+            } else {
+                // すでにキャッシュがある場合はそれなりに表示を維持
+                renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], false);
+            }
         }
     }
 }
 
-/**
- * コメントとリアクションを描画する内部関数
- * @param {boolean} shouldScroll スクロールを一番下に移動させるか
- */
 function renderCommentsUI(comments, reactionData, shouldScroll = false) {
     const commentList = document.getElementById('comment-list');
     if (!comments || comments.length === 0) {
@@ -499,15 +506,22 @@ function renderCommentsUI(comments, reactionData, shouldScroll = false) {
     }
 
     commentList.innerHTML = comments.map(c => {
-        const isOwner = currentUserId && String(c.postuserid) === String(currentUserId);
+        // キー名を正規化 (すべて小文字に変換したデータまたはそのままのデータを許容)
+        const cid = c.commentid || c.commentId;
+        const uid = c.postuserid || c.postUserId;
+        const uname = c.username || c.userName;
+        const text = c.commenttext || c.commentText;
+        const time = c.timestamp || '';
+
+        const isOwner = currentUserId && String(uid) === String(currentUserId);
         const ownerActions = isOwner ? `
             <div class="comment-actions">
-                <button class="btn-text" onclick="updateAlbumComment('${c.commentid}', '${c.postuserid}')">編集</button>
-                <button class="btn-text text-danger" onclick="deleteAlbumComment('${c.commentid}', '${c.postuserid}')">削除</button>
+                <button class="btn-text" onclick="updateAlbumComment('${cid}', '${uid}')">編集</button>
+                <button class="btn-text text-danger" onclick="deleteAlbumComment('${cid}', '${uid}')">削除</button>
             </div>
         ` : '';
 
-        const reactions = reactionData[c.commentid] || { like: 0, love: 0, laugh: 0, party: 0, userReaction: null };
+        const reactions = reactionData[cid] || reactionData[String(cid)] || { like: 0, love: 0, laugh: 0, party: 0, userReaction: null };
         const reactionTypes = [
             { type: 'like', emoji: '👍' },
             { type: 'love', emoji: '❤️' },
@@ -520,18 +534,18 @@ function renderCommentsUI(comments, reactionData, shouldScroll = false) {
                 ${reactionTypes.map(r => {
             const isActive = reactions.userReaction === r.type ? 'active' : '';
             const count = reactions[r.type] || 0;
-            return `<span class="reaction ${isActive}" data-type="${r.type}" onclick="toggleReaction('${c.commentid}', '${r.type}')">${r.emoji} ${count}</span>`;
+            return `<span class="reaction ${isActive}" data-type="${r.type}" onclick="toggleReaction('${cid}', '${r.type}')">${r.emoji} ${count}</span>`;
         }).join('')}
             </div>
         `;
 
         return `
-            <div class="comment-item" id="comment-${c.commentid}">
+            <div class="comment-item" id="comment-${cid}">
                 <div class="comment-header">
-                    <span class="comment-author">${escapeHtml(c.username)}</span>
-                    <span class="comment-date">${c.timestamp}</span>
+                    <span class="comment-author">${escapeHtml(uname)}</span>
+                    <span class="comment-date">${time}</span>
                 </div>
-                <div class="comment-text">${escapeHtml(c.commenttext)}</div>
+                <div class="comment-text">${escapeHtml(text)}</div>
                 ${reactionHtml}
                 ${ownerActions}
             </div>
@@ -542,7 +556,6 @@ function renderCommentsUI(comments, reactionData, shouldScroll = false) {
         commentList.scrollTop = commentList.scrollHeight;
     }
 }
-
 
 async function toggleReaction(commentId, reactionType) {
     if (!currentUserId) {
@@ -558,18 +571,14 @@ async function toggleReaction(commentId, reactionType) {
         albumCache.reactions[photoId][commentId] = { like: 0, love: 0, laugh: 0, party: 0, userReaction: null };
     }
 
-    const oldReactions = JSON.parse(JSON.stringify(albumCache.reactions[photoId])); // バックアップ
+    const oldReactions = JSON.parse(JSON.stringify(albumCache.reactions[photoId]));
     const commentReactions = albumCache.reactions[photoId][commentId];
 
-    // --- 楽観的UI更新 ---
     const isRemove = commentReactions.userReaction === reactionType;
     if (isRemove) {
         commentReactions.userReaction = null;
         commentReactions[reactionType] = Math.max(0, (commentReactions[reactionType] || 0) - 1);
     } else {
-        // 他のリアクションを消して付け替える、または新規
-        // もし userReaction が null の場合でも、サーバー側で重複を弾くようにしているが、
-        // フロントエンドでも可能な限り「自分が既に押しているものがないか」を確認する
         if (commentReactions.userReaction && commentReactions.userReaction !== reactionType) {
             const prevType = commentReactions.userReaction;
             commentReactions[prevType] = Math.max(0, (commentReactions[prevType] || 0) - 1);
@@ -578,8 +587,6 @@ async function toggleReaction(commentId, reactionType) {
         commentReactions[reactionType] = (commentReactions[reactionType] || 0) + 1;
     }
 
-
-    // 即座に再描画（楽観的）
     renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], false);
 
     const requestId = Date.now();
@@ -598,17 +605,12 @@ async function toggleReaction(commentId, reactionType) {
         });
 
         const result = await response.json();
-
-        // 最新のリクエストでなければ無視
         if (lastRequestIdMap[photoId] !== requestId) return;
-
-        // サーバーからの最新データ（result.data）でキャッシュを上書き同期
         albumCache.reactions[photoId] = result.data || {};
         renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], false);
 
     } catch (error) {
         console.error('Error toggling reaction:', error);
-        // エラー時はロールバック
         if (lastRequestIdMap[photoId] === requestId) {
             albumCache.reactions[photoId] = oldReactions;
             renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], false);
@@ -617,15 +619,11 @@ async function toggleReaction(commentId, reactionType) {
     }
 }
 
-
-
 async function saveComment() {
     const userSelect = document.getElementById('comment-user');
     const textField = document.getElementById('comment-text');
     const postUserId = userSelect.value;
     const commentText = textField.value.trim();
-
-    // 選択された名前を取得
     const selectedOption = userSelect.options[userSelect.selectedIndex];
     const userName = selectedOption ? selectedOption.text : '';
 
@@ -634,12 +632,10 @@ async function saveComment() {
         return;
     }
 
-    // セレクターを HTML 構造に合わせて修正 (.comment-form 内の button)
     const submitBtn = document.querySelector('.comment-form button');
     const originalBtnText = submitBtn ? submitBtn.innerText : '送信';
 
     try {
-        // 連打防止: ボタンがある場合は無効化
         if (submitBtn) {
             submitBtn.disabled = true;
             submitBtn.innerText = '送信中...';
@@ -659,7 +655,6 @@ async function saveComment() {
         const result = await response.json();
         if (result.result === 'success') {
             textField.value = '';
-            // 保存後は強制的にリフレッシュ
             await loadComments(currentPhotoId, true);
         } else {
             alert('保存に失敗しました: ' + (result.error || '不明なエラー'));
@@ -668,7 +663,6 @@ async function saveComment() {
         console.error('Error saving comment:', error);
         alert('通信エラーが発生しました。');
     } finally {
-        // ボタンを復元
         if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.innerText = originalBtnText;
@@ -757,9 +751,7 @@ function escapeHtml(str) {
 function showLoading(show) {
     document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
 }
-/**
- * 日付フォーマット (M/D(曜))
- */
+
 function formatDate(dateStr) {
     if (!dateStr) return '';
     const d = new Date(dateStr);
