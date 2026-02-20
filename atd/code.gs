@@ -12,6 +12,8 @@ function doGet(e) {
     return handleGetReactions(doc, e.parameter.photoId, e.parameter.userId);
   } else if (action === 'get_album_init_data') {
     return handleGetAlbumInitData();
+  } else if (action === 'get_admin_photos') {
+    return handleGetAdminPhotos();
   }
 
   // デフォルトルート（アクションがない場合）
@@ -79,6 +81,9 @@ function doPost(e) {
         break;
       case 'save_reaction':
         result = handleSaveReaction(doc, data);
+        break;
+      case 'delete_photo':
+        result = handleDeletePhoto(doc, data);
         break;
       default:
         throw new Error('Unknown action: ' + action);
@@ -269,12 +274,20 @@ function handleDeleteMember(doc, data) {
       break;
     }
   }
-  // 出欠データも削除
+  // 出欠データも一括削除（フィルタリングして上書き）
   const attSheet = doc.getSheetByName('Attendance');
   if (attSheet) {
     const attRows = attSheet.getDataRange().getValues();
-    for (let i = attRows.length - 1; i >= 1; i--) {
-      if (String(attRows[i][1]) === String(data.id)) attSheet.deleteRow(i + 1);
+    if (attRows.length > 1) {
+      const attHeaders = attRows[0];
+      const memberIdStr = String(data.id);
+      const newAttData = attRows.slice(1).filter(row => String(row[1]) !== memberIdStr);
+      
+      attSheet.clearContents();
+      attSheet.getRange(1, 1, 1, attHeaders.length).setValues([attHeaders]);
+      if (newAttData.length > 0) {
+        attSheet.getRange(2, 1, newAttData.length, attHeaders.length).setValues(newAttData);
+      }
     }
   }
   return { success: true };
@@ -333,12 +346,20 @@ function handleDeleteEvent(doc, data) {
       break;
     }
   }
-  // 出欠データも削除
+  // 出欠データも一括削除
   const attSheet = doc.getSheetByName('Attendance');
   if (attSheet) {
     const attRows = attSheet.getDataRange().getValues();
-    for (let i = attRows.length - 1; i >= 1; i--) {
-      if (String(attRows[i][0]) === String(data.id)) attSheet.deleteRow(i + 1);
+    if (attRows.length > 1) {
+      const attHeaders = attRows[0];
+      const eventIdStr = String(data.id);
+      const newAttData = attRows.slice(1).filter(row => String(row[0]) !== eventIdStr);
+
+      attSheet.clearContents();
+      attSheet.getRange(1, 1, 1, attHeaders.length).setValues([attHeaders]);
+      if (newAttData.length > 0) {
+        attSheet.getRange(2, 1, newAttData.length, attHeaders.length).setValues(newAttData);
+      }
     }
   }
   return { success: true };
@@ -378,6 +399,11 @@ function handleUpdateAttendance(doc, data) {
 function handleGetAlbumInitData() {
   const doc = SpreadsheetApp.getActiveSpreadsheet();
   const cache = CacheService.getScriptCache();
+
+  // データの遷移状態を確認（不整合がある場合のみ移行を実行）
+  if (isMigrationNeeded(doc)) {
+    migrateAlbumData(doc);
+  }
   
   // メンバー、期間、イベント一覧を統合して返す
   let members = [];
@@ -409,6 +435,127 @@ function handleGetAlbumInitData() {
     periods: periods,
     events: events
   });
+}
+
+/**
+ * 移行が必要かどうかを判定するガード関数
+ */
+function isMigrationNeeded(doc) {
+  const sheet = doc.getSheetByName('Album');
+  if (!sheet) return false;
+  
+  const rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1) return false;
+
+  const headers = rows[0].map(h => String(h).trim());
+  const expectedHeaders = ['PhotoId', 'EventName', 'ImageUrl', 'FileName', 'Contributor', 'Timestamp'];
+  
+  // 1. ヘッダー構成が違う
+  if (headers.join(',') !== expectedHeaders.join(',')) return true;
+
+  // 2. データの一部をサンプリングしてPhotoIdやEventName形式をチェック
+  // 全行スキャンは重いので、最初と最後の数行をチェック
+  const checkIndices = [1, rows.length - 1];
+  const events = getEventList(doc);
+  const eventNames = events.map(e => e.name);
+
+  for (let idx of checkIndices) {
+    if (idx >= rows.length) continue;
+    const r = rows[idx];
+    // PhotoIdがUUID形式でない
+    if (!String(r[0]).match(/^[0-9a-f-]{36}$/i)) return true;
+    // EventNameが新形式でない
+    if (!String(r[1]).match(/^\d{4}-\d{2}-\d{2}_/)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Albumシートのデータを理想の構成に統一する移行処理
+ */
+function migrateAlbumData(doc) {
+  let sheet = doc.getSheetByName('Album');
+  if (!sheet) return;
+
+  const rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1) return;
+
+  const expectedHeaders = ['PhotoId', 'EventName', 'ImageUrl', 'FileName', 'Contributor', 'Timestamp'];
+  
+  // イベント名形式の補完用（日付取得用）
+  const events = getEventList(doc);
+  const eventNames = events.map(e => e.name);
+  const eventDateMap = {};
+  events.forEach(e => {
+    eventDateMap[e.name] = e.date;
+  });
+
+  const newData = rows.slice(1).map(row => {
+    let photoId = "";
+    let eventName = "";
+    let imageUrl = "";
+    let fileName = "";
+    let contributor = "";
+    let timestamp = "";
+
+    // 各セルの内容をパターンマッチングで判別（強固な復旧ロジック）
+    row.forEach(cell => {
+      const val = String(cell || "").trim();
+      if (!val) return;
+
+      // 1. Google Drive URL (ImageUrl)
+      if (val.includes('drive.google.com/')) {
+        imageUrl = val;
+      }
+      // 2. UUID (PhotoId)
+      else if (val.match(/^[0-9a-f-]{36}$/i)) {
+        photoId = val;
+      }
+      // 3. 日付オブジェクト (Timestamp)
+      else if (cell instanceof Date) {
+        if (!timestamp || timestamp < cell) timestamp = cell;
+      }
+      // 4. 新形式イベント名 (YYYY-MM-DD_Name)
+      else if (val.match(/^\d{4}-\d{2}-\d{2}_/)) {
+        eventName = val;
+      }
+      // 5. 画像ファイル拡張子 (FileName)
+      else if (val.match(/\.(jpg|jpeg|png|gif|webp|heic)$/i)) {
+        fileName = val;
+      }
+      // 6. その他 (旧形式イベント名 または 投稿者名)
+      else {
+        if (eventNames.indexOf(val) !== -1) {
+          // 旧形式イベント名
+          if (!eventName) eventName = val;
+        } else if (!val.match(/^\d{4}-\d{2}$/)) { // YYYY-MM形式（月）は投稿者名から除外
+          if (!contributor || contributor === '匿名') contributor = val;
+        }
+      }
+    });
+
+    // データの正規化・補完
+    if (!photoId) photoId = Utilities.getUuid();
+    if (!timestamp) timestamp = new Date();
+    
+    // イベント名の形式統一 (旧名 -> 新名)
+    if (eventName && !eventName.match(/^\d{4}-\d{2}-\d{2}_/)) {
+      const date = eventDateMap[eventName];
+      if (date) {
+        eventName = `${date}_${eventName}`;
+      }
+    }
+
+    return [photoId, eventName, imageUrl, fileName, contributor || '匿名', timestamp];
+  });
+
+  // シートの更新
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+  if (newData.length > 0) {
+    sheet.getRange(2, 1, newData.length, expectedHeaders.length).setValues(newData);
+  }
 }
 
 function getEventList(doc) {
@@ -472,18 +619,16 @@ function handleGetEventNames() {
 
 function handleGetAlbumImages(eventName) {
   const doc = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = doc.getSheetByName('Album');
-  if (!sheet || !eventName) return createJsonResponse({ images: [] });
+  const photos = getSheetData(doc, 'Album');
+  if (photos.length === 0 || !eventName) return createJsonResponse({ images: [] });
   
-  const rows = sheet.getDataRange().getValues();
-  if (rows.length <= 1) return createJsonResponse({ images: [] });
-  
-  const images = rows.slice(1)
-    .filter(row => row[0] === eventName)
-    .map(row => ({
-      url: row[1],
-      fileName: row[2],
-      timestamp: row[3]
+  const images = photos
+    .filter(p => String(p.eventname) === String(eventName))
+    .map(p => ({
+      photoId: p.photoid,
+      url: p.imageurl,
+      fileName: p.filename,
+      timestamp: p.timestamp
     }));
     
   return createJsonResponse({ images: images });
@@ -508,9 +653,38 @@ function handleGetAlbumComments(photoId) {
     return createJsonResponse({ comments: [], error: 'photoid column not found' });
   }
   
-  const comments = rows.slice(1)
-    .filter(row => String(row[photoIdIdx]) === String(photoId))
-    .map(row => {
+  const photoIdStr = String(photoId).trim();
+  
+  // 1. まずはPhotoId (UUID) で検索
+  let comments = rows.slice(1).filter(row => String(row[photoIdIdx]).trim() === photoIdStr);
+  
+  // 2. もしUUIDで見つからず、かつ指定されたphotoIdがUUID形式なら、
+  //    Albumシートからその写真の旧ID（FileName）を探して再検索する
+  if (comments.length === 0 && photoIdStr.match(/^[0-9a-f-]{36}$/i)) {
+    const albumSheet = doc.getSheetByName('Album');
+    if (albumSheet) {
+      const albumRows = albumSheet.getDataRange().getValues();
+      const albumHeaders = albumRows[0].map(h => String(h).toLowerCase().trim());
+      const aIdIdx = albumHeaders.indexOf('photoid');
+      const aFileIdx = albumHeaders.indexOf('filename');
+      
+      if (aIdIdx !== -1 && aFileIdx !== -1) {
+        const photoRow = albumRows.slice(1).find(r => String(r[aIdIdx]).trim() === photoIdStr);
+        if (photoRow) {
+          const fileName = String(photoRow[aFileIdx]).trim();
+          if (fileName) {
+            // FileNameで再検索
+            comments = rows.slice(1).filter(row => String(row[photoIdIdx]).trim() === fileName);
+            // 将来のためにIDをUUIDに更新しておく（Healing）
+            healCommentIds(sheet, photoIdIdx, fileName, photoIdStr);
+          }
+        }
+      }
+    }
+  }
+  
+  // オブジェクト形式に変換して返却
+  const result = comments.map(row => {
       let obj = {};
       headers.forEach((h, i) => {
         let val = row[i];
@@ -522,7 +696,24 @@ function handleGetAlbumComments(photoId) {
       return obj;
     });
     
-  return createJsonResponse({ comments: comments });
+  return createJsonResponse({ comments: result });
+}
+
+/**
+ * コメントのphotoIdをFileNameからUUIDに更新（自動修復）
+ */
+function healCommentIds(sheet, photoIdIdx, oldId, newUUID) {
+  try {
+    const rows = sheet.getDataRange().getValues();
+    const updates = [];
+    for (let i = 1; i < rows.length; i++) {
+        if (String(rows[i][photoIdIdx]).trim() === oldId) {
+            sheet.getRange(i + 1, photoIdIdx + 1).setValue(newUUID);
+        }
+    }
+  } catch (e) {
+    console.error('Healing failed:', e.toString());
+  }
 }
 
 /**
@@ -674,10 +865,43 @@ function getReactionsInternal(doc, photoId, userId) {
   const comments = commentSheet.getDataRange().getValues();
   const reactions = reactionSheet.getDataRange().getValues();
 
+  if (comments.length <= 1) return {};
+
+  const commentHeaders = comments[0].map(h => String(h).toLowerCase().trim());
+  const photoIdIdx = commentHeaders.indexOf('photoid');
+  const commentIdIdx = commentHeaders.indexOf('commentid');
+
+  if (photoIdIdx === -1 || commentIdIdx === -1) return {};
+
+  const pidStr = String(photoId).trim();
+
   // その写真に紐づくコメントIDをリストアップ
-  const targetCommentIds = comments.slice(1)
-    .filter(row => String(row[1]) === String(photoId)) // 1: photoId
-    .map(row => String(row[0])); // 0: commentId
+  let targetCommentIds = comments.slice(1)
+    .filter(row => String(row[photoIdIdx]).trim() === pidStr)
+    .map(row => String(row[commentIdIdx]).trim());
+
+  // もしPhotoIdで見つからない場合、FileNameでのフォールバック
+  if (targetCommentIds.length === 0 && pidStr.match(/^[0-9a-f-]{36}$/i)) {
+    const albumSheet = doc.getSheetByName('Album');
+    if (albumSheet) {
+      const albumRows = albumSheet.getDataRange().getValues();
+      const albumHeaders = albumRows[0].map(h => String(h).toLowerCase().trim());
+      const aIdIdx = albumHeaders.indexOf('photoid');
+      const aFileIdx = albumHeaders.indexOf('filename');
+      
+      if (aIdIdx !== -1 && aFileIdx !== -1) {
+        const photoRow = albumRows.slice(1).find(r => String(r[aIdIdx]).trim() === pidStr);
+        if (photoRow) {
+          const fileName = String(photoRow[aFileIdx]).trim();
+          if (fileName) {
+            targetCommentIds = comments.slice(1)
+              .filter(row => String(row[photoIdIdx]).trim() === fileName)
+              .map(row => String(row[commentIdIdx]).trim());
+          }
+        }
+      }
+    }
+  }
 
   const summary = {};
   targetCommentIds.forEach(id => {
@@ -745,16 +969,144 @@ function handleUploadAlbumImage(data) {
   
   const imageUrl = `https://drive.google.com/thumbnail?sz=w1000&id=${file.getId()}`;
   
+  const photoId = Utilities.getUuid();
   const doc = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = doc.getSheetByName('Album');
-  if (!sheet) {
-    sheet = doc.insertSheet('Album');
-    sheet.appendRow(['EventName', 'ImageUrl', 'FileName', 'Timestamp']);
+  let sheet = doc.getSheetByName('Album') || doc.insertSheet('Album');
+  
+  const expectedHeaders = ['PhotoId', 'EventName', 'ImageUrl', 'FileName', 'Contributor', 'Timestamp'];
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(expectedHeaders);
   }
   
-  sheet.appendRow([data.eventName, imageUrl, data.fileName, new Date()]);
+  // ヘッダーの整合性を確認
+  ensureHeaders(sheet, expectedHeaders);
   
-  return { success: true, imageUrl: imageUrl };
+  sheet.appendRow([photoId, data.eventName, imageUrl, data.fileName, data.contributor || '匿名', new Date()]);
+  
+  return { success: true, imageUrl: imageUrl, photoId: photoId };
+}
+
+/**
+ * 写真一覧全取得 (管理者用・google.script.run用)
+ */
+function getAllPhotos() {
+  const doc = SpreadsheetApp.getActiveSpreadsheet();
+  const photos = getSheetData(doc, 'Album');
+  // 投稿日時で降順ソート
+  photos.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+  return photos;
+}
+
+/**
+ * 写真削除処理 (管理者用・google.script.run用)
+ */
+function deletePhoto(photoId) {
+  const doc = SpreadsheetApp.getActiveSpreadsheet();
+  const albumSheet = doc.getSheetByName('Album');
+  if (!albumSheet) return { success: false, error: 'Album sheet not found' };
+
+  const rows = albumSheet.getDataRange().getValues();
+  if (rows.length <= 1) return { success: false, error: 'No data' };
+  
+  const headers = rows[0].map(h => String(h).toLowerCase().trim());
+  const idIdx = headers.indexOf('photoid');
+  const urlIdx = headers.indexOf('imageurl');
+
+  if (idIdx === -1 || urlIdx === -1) return { success: false, error: 'Column not found' };
+
+  let imageUrl = '';
+  let photoRowIndex = -1;
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][idIdx]) === String(photoId)) {
+      imageUrl = rows[i][urlIdx];
+      photoRowIndex = i + 1;
+      break;
+    }
+  }
+
+  if (photoRowIndex === -1) return { success: false, error: 'Photo not found' };
+
+  // 1. 先にシートからレコードを削除（データベースの整合性を優先）
+  albumSheet.deleteRow(photoRowIndex);
+
+  // 3. 関連コメントとリアクションを高速一括削除（フィルタリングして上書き）
+  const commentSheet = doc.getSheetByName('AlbumComments');
+  if (commentSheet) {
+    const commentRows = commentSheet.getDataRange().getValues();
+    if (commentRows.length > 1) {
+      const commentHeaders = commentRows[0];
+      const chLower = commentHeaders.map(h => String(h).toLowerCase());
+      const photoIdIdx = chLower.indexOf('photoid');
+      const commentIdIdx = chLower.indexOf('commentid');
+
+      if (photoIdIdx !== -1) {
+        const photoIdStr = String(photoId);
+        // 削除対象のコメントIDをセットとして保持 (O(1)検索用)
+        const commentIdsToDelete = new Set();
+        const newCommentData = [];
+
+        commentRows.slice(1).forEach(row => {
+          if (String(row[photoIdIdx]) === photoIdStr) {
+            commentIdsToDelete.add(String(row[commentIdIdx]));
+          } else {
+            newCommentData.push(row);
+          }
+        });
+
+        // コメントシートを更新
+        commentSheet.clearContents();
+        commentSheet.getRange(1, 1, 1, commentHeaders.length).setValues([commentHeaders]);
+        if (newCommentData.length > 0) {
+          commentSheet.getRange(2, 1, newCommentData.length, commentHeaders.length).setValues(newCommentData);
+        }
+
+        // リアクションシートも一括更新
+        if (commentIdsToDelete.size > 0) {
+          const reactionSheet = doc.getSheetByName('Reactions');
+          if (reactionSheet) {
+            const reactionRows = reactionSheet.getDataRange().getValues();
+            if (reactionRows.length > 1) {
+              const reactionHeaders = reactionRows[0];
+              // row[0] が commentId
+              const newReactionData = reactionRows.slice(1).filter(row => !commentIdsToDelete.has(String(row[0])));
+              
+              reactionSheet.clearContents();
+              reactionSheet.getRange(1, 1, 1, reactionHeaders.length).setValues([reactionHeaders]);
+              if (newReactionData.length > 0) {
+                reactionSheet.getRange(2, 1, newReactionData.length, reactionHeaders.length).setValues(newReactionData);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Google Drive上のファイルを削除 (時間がかかる可能性があるため最後に実行)
+  // 失敗してもデータベース側は削除できているため、成功として扱う
+  try {
+    const fileIdMatch = imageUrl.match(/id=([^&]+)/);
+    if (fileIdMatch && fileIdMatch[1]) {
+      const fileId = fileIdMatch[1];
+      DriveApp.getFileById(fileId).setTrashed(true);
+    }
+  } catch (e) {
+    console.error('Failed to move file to trash:', e.toString());
+  }
+
+  return { success: true };
+}
+
+/**
+ * doPost用ハンドラ (念のためAPI経由でも動作するように残す)
+ */
+function handleGetAdminPhotos() {
+  return createJsonResponse({ photos: getAllPhotos() });
+}
+
+function handleDeletePhoto(doc, data) {
+  return deletePhoto(data.photoId);
 }
 
 function createJsonResponse(data) {
@@ -772,7 +1124,7 @@ function setup() {
     { name: 'Members', headers: ['Id', 'Name', 'Affiliation', 'JoinMonth', 'LeaveMonth'] },
     { name: 'Events', headers: ['Id', 'Date', 'Time', 'Location', 'Title', 'Note', 'DeadlineDate', 'DeadlineTime', 'Canceled'] },
     { name: 'Attendance', headers: ['EventID', 'MemberID', 'Status', 'Comment', 'Timestamp'] },
-    { name: 'Album', headers: ['EventName', 'ImageUrl', 'FileName', 'Timestamp'] },
+    { name: 'Album', headers: ['PhotoId', 'EventName', 'ImageUrl', 'FileName', 'Contributor', 'Timestamp'] },
     { name: 'AlbumComments', headers: ['commentId', 'photoId', 'userName', 'postUserId', 'commentText', 'timestamp'] }
   ];
   
