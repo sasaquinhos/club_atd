@@ -223,6 +223,34 @@
             <p style="text-align: center; color: #999;">イベントを選択してください。</p>
           </div>
         </div>
+
+        <!-- Password Settings -->
+        <div class="card">
+          <div class="item-header">
+            <h3>パスワード設定</h3>
+          </div>
+          <p style="margin-bottom: 1rem; font-size: 0.9rem; color: #666;">管理者画面とアルバム画面のパスワードを変更します。</p>
+
+          <div class="form-group">
+            <label>管理者パスワード</label>
+            <div class="inline-form">
+              <input type="password" id="new-admin-password" placeholder="新しい管理者パスワード">
+              <button class="btn btn-secondary btn-sm" style="width: auto;"
+                onclick="updatePassword('admin')">変更保存</button>
+            </div>
+          </div>
+
+          <hr style="margin: 1.5rem 0;">
+
+          <div class="form-group">
+            <label>アルバムパスワード</label>
+            <div class="inline-form">
+              <input type="password" id="new-album-password" placeholder="新しいアルバムパスワード">
+              <button class="btn btn-secondary btn-sm" style="width: auto;"
+                onclick="updatePassword('album')">変更保存</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
