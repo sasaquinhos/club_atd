@@ -88,6 +88,9 @@ function doPost(e) {
       case 'verify_password':
         result = handleVerifyPassword(data);
         break;
+      case 'change_password':
+        result = handleChangePassword(data);
+        break;
       default:
         throw new Error('Unknown action: ' + action);
     }
@@ -1141,17 +1144,40 @@ function setup() {
       ensureHeaders(sheet, s.headers);
     }
   });
+
+  // パスワードの初期設定（未設定の場合のみ）
+  const props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('ADMIN_PASSWORD')) {
+    props.setProperty('ADMIN_PASSWORD', '1171');
+  }
+  if (!props.getProperty('ALBUM_PASSWORD')) {
+    props.setProperty('ALBUM_PASSWORD', 'sdkk1171');
+  }
+
   return { success: true };
 }
 
 function handleVerifyPassword(data) {
-  const adminPassword = '1171';
-  const albumPassword = 'sdkk1171';
+  const props = PropertiesService.getScriptProperties();
+  const adminPassword = props.getProperty('ADMIN_PASSWORD') || '1171';
+  const albumPassword = props.getProperty('ALBUM_PASSWORD') || 'sdkk1171';
   
   if (data.type === 'admin') {
     return { success: data.password === adminPassword };
   } else if (data.type === 'album') {
     return { success: data.password === albumPassword };
+  }
+  return { success: false, error: 'Invalid type' };
+}
+
+function handleChangePassword(data) {
+  const props = PropertiesService.getScriptProperties();
+  if (data.type === 'admin') {
+    props.setProperty('ADMIN_PASSWORD', data.newPassword);
+    return { success: true };
+  } else if (data.type === 'album') {
+    props.setProperty('ALBUM_PASSWORD', data.newPassword);
+    return { success: true };
   }
   return { success: false, error: 'Invalid type' };
 }
