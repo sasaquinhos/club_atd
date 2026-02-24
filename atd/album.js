@@ -1,5 +1,5 @@
 // GAS Web App URL (デプロイ後に取得したURLをここに記載してください)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbz9jRPw6VGYaziLsFeFmCdC2loRIJOa2NzMrTGSsDWJTaz0VbnTcapLpnOikiFjWF2O2g/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzipVcjSC65TXFCXPcVD6Pg50-zwOfNagUQDYB1lF0jOnBB698adfaEjY91Sr08rUaszQ/exec';
 
 let allMembers = [];
 let allEvents = [];
@@ -109,15 +109,37 @@ function switchAlbumTab(tab) {
     }
 }
 
-function checkAlbumPassword() {
+async function checkAlbumPassword() {
     const pwdInput = document.getElementById('album-password');
-    if (pwdInput.value === 'sdkk1171') {
-        sessionStorage.setItem(ALBUM_AUTH_KEY, 'true');
-        showAlbumContent();
-    } else {
-        alert('パスワードが正しくありません。');
-        pwdInput.value = '';
-        pwdInput.focus();
+    const password = pwdInput.value;
+
+    if (!password) return;
+
+    showLoading(true);
+    try {
+        const response = await fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'verify_password',
+                type: 'album',
+                password: password
+            })
+        });
+        const res = await response.json();
+
+        if (res.result === 'success' && res.data.success) {
+            sessionStorage.setItem(ALBUM_AUTH_KEY, 'true');
+            showAlbumContent();
+        } else {
+            alert('パスワードが正しくありません。');
+            pwdInput.value = '';
+            pwdInput.focus();
+        }
+    } catch (err) {
+        console.error('Password verification failed:', err);
+        alert('通信エラーが発生しました。');
+    } finally {
+        showLoading(false);
     }
 }
 
