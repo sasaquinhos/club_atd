@@ -1,5 +1,5 @@
 // GAS Web App URL (デプロイ後に取得したURLをここに記載してください)
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzipVcjSC65TXFCXPcVD6Pg50-zwOfNagUQDYB1lF0jOnBB698adfaEjY91Sr08rUaszQ/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxFCJxuJIzHbdEqhCjr8dpTBpbWsi2D5P33lDhrZGaJyXf2jIMfEm5uyjTInCOjZ08f-w/exec';
 
 let allMembers = [];
 let allEvents = [];
