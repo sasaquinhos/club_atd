@@ -1,5 +1,5 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycbzipVcjSC65TXFCXPcVD6Pg50-zwOfNagUQDYB1lF0jOnBB698adfaEjY91Sr08rUaszQ/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbxFCJxuJIzHbdEqhCjr8dpTBpbWsi2D5P33lDhrZGaJyXf2jIMfEm5uyjTInCOjZ08f-w/exec';
 
 // App State
 const state = {
@@ -1128,4 +1128,33 @@ function renderEventOptions(events, currentId = null, valueType = 'eventId') {
   }
 
   return html;
+}
+
+async function updatePassword(type) {
+  const inputId = type === 'admin' ? 'new-admin-password' : 'new-album-password';
+  const passwordInput = document.getElementById(inputId);
+  const newPassword = passwordInput.value;
+
+  if (!newPassword) {
+    alert('新しいパスワードを入力してください。');
+    return;
+  }
+
+  if (!confirm(`${type === 'admin' ? '管理者' : 'アルバム'}のパスワードを変更しますか？`)) return;
+
+  setLoading(true);
+  try {
+    const res = await apiCall('change_password', { type, newPassword });
+    if (res.result === 'success' && res.data.success) {
+      alert('パスワードを変更しました。');
+      passwordInput.value = '';
+    } else {
+      alert('変更に失敗しました: ' + (res.error || '不明なエラー'));
+    }
+  } catch (err) {
+    console.error('Password change failed:', err);
+    alert('通信に失敗しました。');
+  } finally {
+    setLoading(false);
+  }
 }
