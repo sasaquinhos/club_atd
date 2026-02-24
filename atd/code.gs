@@ -85,6 +85,9 @@ function doPost(e) {
       case 'delete_photo':
         result = handleDeletePhoto(doc, data);
         break;
+      case 'verify_password':
+        result = handleVerifyPassword(data);
+        break;
       default:
         throw new Error('Unknown action: ' + action);
     }
@@ -1139,6 +1142,18 @@ function setup() {
     }
   });
   return { success: true };
+}
+
+function handleVerifyPassword(data) {
+  const adminPassword = '1171';
+  const albumPassword = 'sdkk1171';
+  
+  if (data.type === 'admin') {
+    return { success: data.password === adminPassword };
+  } else if (data.type === 'album') {
+    return { success: data.password === albumPassword };
+  }
+  return { success: false, error: 'Invalid type' };
 }
 
 /**
