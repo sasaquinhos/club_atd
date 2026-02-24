@@ -1,5 +1,5 @@
 // GAS Web App URL - USER MUST CONFIGURE THIS
-const API_URL = 'https://script.google.com/macros/s/AKfycbz9jRPw6VGYaziLsFeFmCdC2loRIJOa2NzMrTGSsDWJTaz0VbnTcapLpnOikiFjWF2O2g/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzipVcjSC65TXFCXPcVD6Pg50-zwOfNagUQDYB1lF0jOnBB698adfaEjY91Sr08rUaszQ/exec';
 
 // App State
 const state = {
@@ -399,15 +399,28 @@ function finishDeletion(photoId) {
   }
 }
 
-function checkAdminPassword() {
+async function checkAdminPassword() {
   const passwordInput = document.getElementById('admin-password');
-  if (passwordInput.value === '1171') {
-    state.isAdminAuthenticated = true;
-    renderAdminAccess();
-    renderAdminUI();
-    passwordInput.value = '';
-  } else {
-    alert('パスワードが正しくありません。');
+  const password = passwordInput.value;
+
+  if (!password) return;
+
+  setLoading(true);
+  try {
+    const res = await apiCall('verify_password', { type: 'admin', password: password });
+    if (res.result === 'success' && res.data.success) {
+      state.isAdminAuthenticated = true;
+      renderAdminAccess();
+      renderAdminUI();
+      passwordInput.value = '';
+    } else {
+      alert('パスワードが正しくありません。');
+    }
+  } catch (err) {
+    console.error('Password verification failed:', err);
+    alert('通信エラーが発生しました。');
+  } finally {
+    setLoading(false);
   }
 }
 
