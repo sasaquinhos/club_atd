@@ -229,12 +229,17 @@ async function loadImages(eventName) {
 function openPhotoModal(url, photoId) {
     currentPhotoId = photoId;
     document.getElementById('modal-img').src = url;
-    document.getElementById('photo-modal').classList.add('active');
+    const modal = document.getElementById('photo-modal');
+    modal.classList.add('active');
+
+    // モーダル全体（オーバーレイ）を最上部にスクロール
+    modal.scrollTop = 0;
+
     document.getElementById('comment-list').innerHTML = '';
     document.getElementById('comment-text').value = '';
     const statusMsg = document.getElementById('modal-member-status');
     if (statusMsg) statusMsg.style.display = currentUserId ? 'none' : 'block';
-    loadComments(photoId);
+    loadComments(photoId, false, false); // 初期表示はスクロールしない
 }
 
 function closePhotoModal() {
@@ -242,8 +247,11 @@ function closePhotoModal() {
     currentPhotoId = null;
 }
 
-async function loadComments(photoId, forceRefresh = false) {
-    if (!forceRefresh && albumCache.comments[photoId]) { renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], true); return; }
+async function loadComments(photoId, forceRefresh = false, shouldScroll = false) {
+    if (!forceRefresh && albumCache.comments[photoId]) {
+        renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], shouldScroll);
+        return;
+    }
     try {
         const [cData, rData] = await Promise.all([
             fetch(`${GAS_URL}?action=getAlbumComments&photoId=${encodeURIComponent(photoId)}`).then(r => r.json()),
@@ -251,7 +259,7 @@ async function loadComments(photoId, forceRefresh = false) {
         ]);
         albumCache.comments[photoId] = cData.comments || [];
         albumCache.reactions[photoId] = rData || {};
-        renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], true);
+        renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], shouldScroll);
         renderModalPhotoReactions(photoId);
     } catch (e) { console.error(e); }
 }
@@ -271,7 +279,11 @@ function renderModalPhotoReactions(photoId) {
 
 function renderCommentsUI(comments, rData, scroll = false) {
     const list = document.getElementById('comment-list');
-    if (!comments || comments.length === 0) { list.innerHTML = '<p class="text-muted" style="text-align: center; padding: 1rem;">まだコメントはありません。</p>'; return; }
+    if (!comments || comments.length === 0) {
+        list.innerHTML = '<p class="text-muted" style="text-align: center; padding: 1rem;">まだコメントはありません。</p>';
+        list.scrollTop = 0;
+        return;
+    }
 
     list.innerHTML = comments.map(c => {
         const cid = c.commentid || c.commentId, uid = c.postuserid || c.postUserId, reactions = rData[cid] || { like: 0, love: 0, laugh: 0, party: 0, userReaction: null };
@@ -285,7 +297,12 @@ function renderCommentsUI(comments, rData, scroll = false) {
             </div>
         `;
     }).join('');
-    if (scroll) list.scrollTop = list.scrollHeight;
+
+    if (scroll) {
+        list.scrollTop = list.scrollHeight;
+    } else {
+        list.scrollTop = 0; // 明示的に最上部へ
+    }
 }
 
 async function toggleReaction(targetId, reactionType, isPhoto = false) {
@@ -317,7 +334,7 @@ async function saveComment() {
             method: 'POST',
             body: JSON.stringify({ action: 'saveAlbumComment', photoId: currentPhotoId, userName: member ? member.name : '匿名', postUserId: currentUserId, commentText: text })
         }).then(r => r.json());
-        if (res.result === 'success') { txtArea.value = ''; await loadComments(currentPhotoId, true); }
+        if (res.result === 'success') { txtArea.value = ''; await loadComments(currentPhotoId, true, true); } // 送信後は最下部へ
     } catch (e) { console.error(e); }
 }
 
@@ -342,14 +359,14 @@ async function updateAlbumComment(cid, uid) {
     const text = prompt('新しいコメント：'); if (!text) return; showLoading(true);
     try {
         const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'update_album_comment', commentId: cid, postUserId: uid, currentUserId, newContent: text }) }).then(r => r.json());
-        if (res.result === 'success') await loadComments(currentPhotoId, true);
+        if (res.result === 'success') await loadComments(currentPhotoId, true, false);
     } catch (e) { console.error(e); } finally { showLoading(false); }
 }
 async function deleteAlbumComment(cid, uid) {
     if (!confirm('削除しますか？')) return; showLoading(true);
     try {
         const res = await fetch(GAS_URL, { method: 'POST', body: JSON.stringify({ action: 'delete_album_comment', commentId: cid, postUserId: uid, currentUserId }) }).then(r => r.json());
-        if (res.result === 'success') await loadComments(currentPhotoId, true);
+        if (res.result === 'success') await loadComments(currentPhotoId, true, false);
     } catch (e) { console.error(e); } finally { showLoading(false); }
 }
 function escapeHtml(s) { return s ? s.replace(/[&'`"<>]/g, m => ({ '&': '&amp;', "'": '&#39;', '`': '&#96;', '"': '&quot;', '<': '&lt;', '>': '&gt;', }[m])) : ""; }
