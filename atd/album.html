@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>アルバム - サッカー同好会</title>
-    <link rel="stylesheet" href="style.css?v=20260306_1">
+    <link rel="stylesheet" href="style.css?v=20260306_2">
     <style>
         .reactions {
             display: flex;
@@ -144,20 +144,15 @@
                     <button class="btn-close" onclick="closePhotoModal()">×</button>
                 </div>
                 <div class="modal-body">
-                    <div class="modal-photo-section"
-                        style="flex: 1.5; display: flex; flex-direction: column; background: #000;">
-                        <div class="modal-photo-container"
-                            style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                            <img id="modal-img" src="" alt="拡大写真"
-                                style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                    <div class="modal-photo-section">
+                        <div class="modal-photo-container">
+                            <img id="modal-img" src="" alt="拡大写真">
                         </div>
-                        <div id="modal-photo-reactions" class="reactions photo-reactions-bar"
-                            style="padding: 1rem; background: #fff; border-top: 1px solid #f1f5f9; justify-content: center; gap: 16px;">
+                        <div id="modal-photo-reactions" class="reactions photo-reactions-bar">
                             <!-- Photo reactions will be rendered here -->
                         </div>
                     </div>
-                    <div class="modal-comment-container"
-                        style="flex: 1; display: flex; flex-direction: column; padding: 1rem; background: #fff; border-left: 1px solid #f1f5f9;">
+                    <div class="modal-comment-container">
                         <h3>💬 コメント</h3>
                         <div id="comment-list" class="comment-list">
                             <!-- コメントがここに読み込まれます -->
