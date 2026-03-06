@@ -5,41 +5,48 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>アルバム - サッカー同好会</title>
-    <link rel="stylesheet" href="style.css?v=20240218_1">
+    <link rel="stylesheet" href="style.css?v=20260306_1">
     <style>
         .reactions {
             display: flex;
             gap: 8px;
-            justify-content: flex-end;
-            margin-top: 4px;
-            font-size: 0.9rem;
+            justify-content: center;
+            margin-top: 8px;
+            font-size: 0.85rem;
+            flex-wrap: wrap;
         }
 
         .reaction {
             cursor: pointer;
-            padding: 2px 8px;
-            border-radius: 12px;
-            background: #f0f0f0;
-            border: 1px solid transparent;
+            padding: 2px 6px;
+            border-radius: 8px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
             transition: all 0.2s;
             user-select: none;
-            color: #666;
+            color: #64748b;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
 
         .reaction:hover {
-            background: #e0e0e0;
+            background: #f1f5f9;
+            border-color: #cbd5e1;
         }
 
         .reaction.active {
-            background: #e3f2fd;
-            border-color: #2196f3;
-            color: #2196f3;
+            background: #e0f2fe;
+            border-color: #7dd3fc;
+            color: #0369a1;
             font-weight: bold;
         }
 
-        .comment-item {
-            position: relative;
-            padding-bottom: 8px;
+        .member-select-card {
+            background: #f8fafc;
+            border-left: 4px solid #3b82f6;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
         }
     </style>
 </head>
@@ -76,16 +83,23 @@
             <div id="album-view" class="tab-content active">
                 <div class="card">
                     <div class="form-group">
-                        <label for="view-period-select">期間を選択</label>
+                        <label for="view-period-select">1. 期間を選択</label>
                         <select id="view-period-select">
                             <option value="">-- 期間を選択 --</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="view-event-select">イベントを選択</label>
+                        <label for="view-event-select">2. イベントを選択</label>
                         <select id="view-event-select" disabled>
                             <option value="">-- 先に期間を選択してください --</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="view-member-select">3. あなたの名前を選択（必須）</label>
+                        <select id="view-member-select" class="member-select-sync">
+                            <option value="">-- 名前を選択 --</option>
+                        </select>
+                        <p class="text-muted" style="font-size: 0.75rem; margin-top: 4px;">※リアクションやコメントに必要です。</p>
                     </div>
                 </div>
                 <div id="photo-grid" class="photo-grid">
@@ -97,25 +111,25 @@
             <div id="album-upload" class="tab-content">
                 <div class="card">
                     <div class="form-group">
-                        <label for="upload-period-select">期間を選択</label>
+                        <label for="upload-period-select">1. 期間を選択</label>
                         <select id="upload-period-select">
                             <option value="">-- 期間を選択 --</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="upload-event-select">アップロード先イベント</label>
+                        <label for="upload-event-select">2. アップロード先イベント</label>
                         <select id="upload-event-select" disabled>
                             <option value="">-- 先に期間を選択してください --</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="upload-user">投稿者名</label>
-                        <select id="upload-user">
+                        <label for="upload-member-select">3. あなたの名前を選択（必須）</label>
+                        <select id="upload-member-select" class="member-select-sync">
                             <option value="">-- 名前を選択 --</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="photo-input">写真を選択 (複数枚可)</label>
+                        <label for="photo-input">4. 写真を選択 (複数枚可)</label>
                         <input type="file" id="photo-input" accept="image/*" multiple>
                     </div>
                     <button id="upload-btn" class="btn">アップロード開始</button>
@@ -130,23 +144,33 @@
                     <button class="btn-close" onclick="closePhotoModal()">×</button>
                 </div>
                 <div class="modal-body">
-                    <div class="modal-photo-container">
-                        <img id="modal-img" src="" alt="拡大写真">
+                    <div class="modal-photo-section"
+                        style="flex: 1.5; display: flex; flex-direction: column; background: #000;">
+                        <div class="modal-photo-container"
+                            style="flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                            <img id="modal-img" src="" alt="拡大写真"
+                                style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                        </div>
+                        <div id="modal-photo-reactions" class="reactions photo-reactions-bar"
+                            style="padding: 1rem; background: #fff; border-top: 1px solid #f1f5f9; justify-content: center; gap: 16px;">
+                            <!-- Photo reactions will be rendered here -->
+                        </div>
                     </div>
-                    <div class="modal-comment-container">
+                    <div class="modal-comment-container"
+                        style="flex: 1; display: flex; flex-direction: column; padding: 1rem; background: #fff; border-left: 1px solid #f1f5f9;">
                         <h3>💬 コメント</h3>
                         <div id="comment-list" class="comment-list">
                             <!-- コメントがここに読み込まれます -->
                             <p class="text-muted" style="text-align: center; padding: 1rem;">読み込み中...</p>
                         </div>
                         <div class="comment-form">
-                            <select id="comment-user" class="mt-1">
-                                <option value="">-- 名前を選択 --</option>
-                            </select>
                             <div class="inline-form mt-1">
                                 <input type="text" id="comment-text" placeholder="コメントを入力...">
                                 <button onclick="saveComment()" class="btn btn-sm" style="width: 60px;">送信</button>
                             </div>
+                            <p id="modal-member-status" class="text-muted"
+                                style="font-size: 0.75rem; margin-top: 4px; display: none; color: #ef4444;">※名前を選択してください
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -154,7 +178,7 @@
         </div>
     </div>
 
-    <script src="album.js?v=20260220_1"></script>
+    <script src="album.js?v=20260306_8"></script>
 </body>
 
 </html>
