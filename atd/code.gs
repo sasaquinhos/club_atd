@@ -860,81 +860,102 @@ function handleSaveReaction(doc, data) {
 
 
 /**
- * 写真に紐づく全てのコメントのリアクションを取得・集計 (内部処理用)
+ * 写真そのもの、および写真に紐づく全てのコメントのリアクションを取得・集計 (内部処理用)
  */
 function getReactionsInternal(doc, photoId, userId) {
   const commentSheet = doc.getSheetByName('AlbumComments');
   const reactionSheet = doc.getSheetByName('Reactions');
   
-  if (!commentSheet || !reactionSheet) return {};
+  if (!reactionSheet) return {};
 
-  const comments = commentSheet.getDataRange().getValues();
   const reactions = reactionSheet.getDataRange().getValues();
-
-  if (comments.length <= 1) return {};
-
-  const commentHeaders = comments[0].map(h => String(h).toLowerCase().trim());
-  const photoIdIdx = commentHeaders.indexOf('photoid');
-  const commentIdIdx = commentHeaders.indexOf('commentid');
-
-  if (photoIdIdx === -1 || commentIdIdx === -1) return {};
-
   const pidStr = String(photoId).trim();
+  const summary = {};
 
-  // その写真に紐づくコメントIDをリストアップ
-  let targetCommentIds = comments.slice(1)
-    .filter(row => String(row[photoIdIdx]).trim() === pidStr)
-    .map(row => String(row[commentIdIdx]).trim());
+  // 1. 写真そのもののリアクション枠を初期化
+  summary[pidStr] = {
+    like: 0,
+    love: 0,
+    laugh: 0,
+    party: 0,
+    userReaction: null
+  };
 
-  // もしPhotoIdで見つからない場合、FileNameでのフォールバック
-  if (targetCommentIds.length === 0 && pidStr.match(/^[0-9a-f-]{36}$/i)) {
-    const albumSheet = doc.getSheetByName('Album');
-    if (albumSheet) {
-      const albumRows = albumSheet.getDataRange().getValues();
-      const albumHeaders = albumRows[0].map(h => String(h).toLowerCase().trim());
-      const aIdIdx = albumHeaders.indexOf('photoid');
-      const aFileIdx = albumHeaders.indexOf('filename');
-      
-      if (aIdIdx !== -1 && aFileIdx !== -1) {
-        const photoRow = albumRows.slice(1).find(r => String(r[aIdIdx]).trim() === pidStr);
-        if (photoRow) {
-          const fileName = String(photoRow[aFileIdx]).trim();
-          if (fileName) {
-            targetCommentIds = comments.slice(1)
-              .filter(row => String(row[photoIdIdx]).trim() === fileName)
-              .map(row => String(row[commentIdIdx]).trim());
+  // 2. その写真に紐づくコメントIDをリストアップして初期化
+  if (commentSheet) {
+    const comments = commentSheet.getDataRange().getValues();
+    if (comments.length > 1) {
+      const commentHeaders = comments[0].map(h => String(h).toLowerCase().trim());
+      const photoIdIdx = commentHeaders.indexOf('photoid');
+      const commentIdIdx = commentHeaders.indexOf('commentid');
+
+      if (photoIdIdx !== -1 && commentIdIdx !== -1) {
+        // 写真ID (UUID) で検索
+        comments.slice(1).forEach(row => {
+          if (String(row[photoIdIdx]).trim() === pidStr) {
+            const cid = String(row[commentIdIdx]).trim();
+            summary[cid] = {
+              like: 0,
+              love: 0,
+              laugh: 0,
+              party: 0,
+              userReaction: null
+            };
+          }
+        });
+
+        // 互換性維持: UUIDで見つからなかった場合のために、Albumシートから旧ID(FileName)を取得してチェック
+        if (Object.keys(summary).length === 1 && pidStr.match(/^[0-9a-f-]{36}$/i)) {
+          const albumSheet = doc.getSheetByName('Album');
+          if (albumSheet) {
+            const albumRows = albumSheet.getDataRange().getValues();
+            const albumHeaders = albumRows[0].map(h => String(h).toLowerCase().trim());
+            const aIdIdx = albumHeaders.indexOf('photoid');
+            const aFileIdx = albumHeaders.indexOf('filename');
+            
+            if (aIdIdx !== -1 && aFileIdx !== -1) {
+              const photoRow = albumRows.slice(1).find(r => String(r[aIdIdx]).trim() === pidStr);
+              if (photoRow) {
+                const fileName = String(photoRow[aFileIdx]).trim();
+                if (fileName) {
+                  comments.slice(1).forEach(row => {
+                    if (String(row[photoIdIdx]).trim() === fileName) {
+                      const cid = String(row[commentIdIdx]).trim();
+                      summary[cid] = {
+                        like: 0,
+                        love: 0,
+                        laugh: 0,
+                        party: 0,
+                        userReaction: null
+                      };
+                    }
+                  });
+                }
+              }
+            }
           }
         }
       }
     }
   }
 
-  const summary = {};
-  targetCommentIds.forEach(id => {
-    summary[id] = {
-      like: 0,
-      love: 0,
-      laugh: 0,
-      party: 0,
-      userReaction: null
-    };
-  });
+  // 3. リアクションシートをスキャンして集計
+  if (reactions.length > 1) {
+    reactions.slice(1).forEach(row => {
+      const targetId = String(row[0]).trim(); // commentId 列だが PhotoId も入る
+      const uid = String(row[1]).trim();
+      const rtype = String(row[2]).trim();
 
-  // リアクションを集計
-  reactions.slice(1).forEach(row => {
-    const cid = String(row[0]);
-    const uid = String(row[1]);
-    const rtype = row[2];
-
-    if (summary[cid]) {
-      if (summary[cid].hasOwnProperty(rtype)) {
-        summary[cid][rtype]++;
+      if (summary[targetId]) {
+        if (summary[targetId].hasOwnProperty(rtype)) {
+          summary[targetId][rtype]++;
+        }
+        if (uid === String(userId)) {
+          summary[targetId].userReaction = rtype;
+        }
       }
-      if (uid === String(userId)) {
-        summary[cid].userReaction = rtype;
-      }
-    }
-  });
+    });
+  }
 
   return summary;
 }
