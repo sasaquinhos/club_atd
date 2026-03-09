@@ -5,6 +5,7 @@ let allMembers = [];
 let allEvents = [];
 let allPeriods = [];
 let currentUserId = null;
+let currentPhotoId = null;
 
 const albumCache = {
     comments: {},
@@ -236,6 +237,9 @@ function openPhotoModal(url, photoId) {
     modal.scrollTop = 0;
 
     document.getElementById('comment-list').innerHTML = '';
+    const reactionsContainer = document.getElementById('modal-photo-reactions');
+    if (reactionsContainer) reactionsContainer.innerHTML = '';
+
     document.getElementById('comment-text').value = '';
     const statusMsg = document.getElementById('modal-member-status');
     if (statusMsg) statusMsg.style.display = currentUserId ? 'none' : 'block';
@@ -250,6 +254,7 @@ function closePhotoModal() {
 async function loadComments(photoId, forceRefresh = false, shouldScroll = false) {
     if (!forceRefresh && albumCache.comments[photoId]) {
         renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], shouldScroll);
+        renderModalPhotoReactions(photoId);
         return;
     }
     try {
@@ -257,6 +262,10 @@ async function loadComments(photoId, forceRefresh = false, shouldScroll = false)
             fetch(`${GAS_URL}?action=getAlbumComments&photoId=${encodeURIComponent(photoId)}`).then(r => r.json()),
             fetch(`${GAS_URL}?action=get_reactions&photoId=${encodeURIComponent(photoId)}&userId=${encodeURIComponent(currentUserId || '')}`).then(r => r.json())
         ]);
+
+        // レースコンディション対策: 通信中にモーダルが閉じられたか別の写真に切り替わっていたら処理を中断
+        if (photoId !== currentPhotoId) return;
+
         albumCache.comments[photoId] = cData.comments || [];
         albumCache.reactions[photoId] = rData || {};
         renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId], shouldScroll);
@@ -320,7 +329,12 @@ async function toggleReaction(targetId, reactionType, isPhoto = false) {
             method: 'POST',
             body: JSON.stringify({ action: 'save_reaction', photoId, commentId: targetId, userId: currentUserId, reactionType })
         }).then(r => r.json());
+
         albumCache.reactions[photoId] = res.data || {};
+
+        // レースコンディション対策: 通信中にモーダルが閉じられたか別の写真に切り替わっていたら表示更新をスキップ
+        if (photoId !== currentPhotoId) return;
+
         if (isPhoto) renderModalPhotoReactions(photoId); else renderCommentsUI(albumCache.comments[photoId], albumCache.reactions[photoId]);
     } catch (e) { console.error(e); }
 }
