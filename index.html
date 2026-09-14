@@ -177,6 +177,29 @@
           </div>
         </div>
 
+        <!-- Attendance Edit Master (Admin) -->
+        <div class="card">
+          <div class="item-header">
+            <h3>出欠データの修正・代理登録</h3>
+          </div>
+          <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 1rem;">
+            押し忘れの出席登録や、出席から欠席への変更などを個別・一括で修正できます。
+          </p>
+          <div class="form-group mb-1">
+            <label>1. 期間を選択</label>
+            <select id="admin-att-edit-period-select" style="font-size: 0.9rem; padding: 0.4rem;"></select>
+          </div>
+          <div class="form-group mb-1">
+            <label>2. イベントを選択</label>
+            <select id="admin-att-edit-event-select" disabled style="font-size: 0.9rem; padding: 0.4rem;">
+              <option value="">-- 先に期間を選択してください --</option>
+            </select>
+          </div>
+          <div id="admin-att-edit-list-container" style="margin-top: 1rem;">
+            <!-- Member attendance list will be rendered here -->
+          </div>
+        </div>
+
         <!-- Member Master -->
         <div class="card">
           <div class="item-header">
