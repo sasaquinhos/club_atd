@@ -198,7 +198,7 @@ async function handleUpload() {
     let successCount = 0;
     for (let i = 0; i < files.length; i++) {
         try {
-            const file = files[i], base64Data = await compressImage(file, 1920, 0.8);
+            const file = files[i], base64Data = await compressImage(file, 1280, 0.7);
             const res = await fetch(GAS_URL, {
                 method: 'POST',
                 body: JSON.stringify({ action: 'upload_album_image', eventName, fileName: file.name, fileData: base64Data, contributor })
@@ -220,9 +220,10 @@ async function loadImages(eventName) {
         if (data.images.length === 0) { grid.innerHTML = '<p style="padding:2rem; color:#64748b; text-align:center;">まだ写真がありません。</p>'; return; }
 
         grid.innerHTML = data.images.map(img => {
-            const url = img.url.replace('drive.google.com/uc?id=', 'drive.google.com/thumbnail?sz=w1000&id=');
+            const thumbUrl = img.url.replace('drive.google.com/uc?id=', 'drive.google.com/thumbnail?sz=w400&id=');
+            const fullUrl = img.url.replace('drive.google.com/uc?id=', 'drive.google.com/thumbnail?sz=w1600&id=');
             const photoId = img.photoId || img.fileName;
-            return `<div class="photo-item" id="photo-${photoId}"><img src="${url}" alt="${img.fileName}" onclick="openPhotoModal('${url}', '${photoId}')"></div>`;
+            return `<div class="photo-item" id="photo-${photoId}"><img src="${thumbUrl}" alt="${img.fileName}" loading="lazy" onclick="openPhotoModal('${fullUrl}', '${photoId}')"></div>`;
         }).join('');
     } catch (e) { console.error(e); grid.innerHTML = '<p style="padding:2rem; color:red; text-align:center;">取得に失敗しました。</p>'; }
 }
