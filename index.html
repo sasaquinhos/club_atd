@@ -80,6 +80,9 @@
 
       <!-- Admin Content (Hidden by default) -->
       <div id="admin-content" style="display: none;">
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+          <button class="btn btn-secondary btn-sm" onclick="logoutAdmin()" style="width: auto;">🔒 ログアウト</button>
+        </div>
         <!-- Period Master -->
         <div class="card">
           <div class="item-header">
@@ -196,7 +199,9 @@
             </select>
           </div>
           <div id="admin-att-edit-list-container" style="margin-top: 1rem;">
-            <!-- Member attendance list will be rendered here -->
+            <div style="padding: 1.5rem; text-align: center; border: 2px dashed #cbd5e1; border-radius: 6px; color: #64748b; background: #f8fafc;">
+              👆 上の「2. イベントを選択」からイベントを選ぶと、ここにメンバー一覧と出欠修正欄が表示されます。
+            </div>
           </div>
         </div>
 
@@ -297,7 +302,7 @@
     </div>
   </div>
 
-  <script src="atd/app.js"></script>
+  <script src="atd/app.js?v=20260914_05"></script>
 </body>
 
 </html>
