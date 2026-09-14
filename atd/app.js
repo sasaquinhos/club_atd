@@ -422,7 +422,11 @@ async function checkAdminPassword() {
     const res = await apiCall('verify_password', { type: 'admin', password: password });
     if (res.result === 'success' && res.data.success) {
       state.isAdminAuthenticated = true;
-      renderAdminAccess();
+      sessionStorage.setItem('projectC_admin_authenticated', 'true');
+      const authArea = document.getElementById('admin-auth-area');
+      const contentArea = document.getElementById('admin-content');
+      if (authArea) authArea.style.display = 'none';
+      if (contentArea) contentArea.style.display = 'block';
       renderAdminUI();
       passwordInput.value = '';
     } else {
@@ -793,6 +797,20 @@ function renderStatusUI() {
 
 // --- Admin Logic ---
 function renderAdminUI() {
+  if (sessionStorage.getItem('projectC_admin_authenticated') === 'true') {
+    state.isAdminAuthenticated = true;
+  }
+  const authArea = document.getElementById('admin-auth-area');
+  const contentArea = document.getElementById('admin-content');
+  if (state.isAdminAuthenticated) {
+    if (authArea) authArea.style.display = 'none';
+    if (contentArea) contentArea.style.display = 'block';
+  } else {
+    if (authArea) authArea.style.display = 'block';
+    if (contentArea) contentArea.style.display = 'none';
+    return;
+  }
+
   const today = getTodayStr();
   const curPeriod = state.periods.find(p => today >= p.startdate && today <= p.enddate);
 
@@ -849,6 +867,7 @@ function renderAdminUI() {
       updateAdminAttEditEventSelect(curPeriod.id);
     } else if (prevVal) {
       adminAttEditPeriodSelect.value = prevVal;
+      updateAdminAttEditEventSelect(prevVal);
     }
   }
 }
@@ -864,12 +883,24 @@ function updateAdminAttEditEventSelect(periodId) {
     return;
   }
 
-  const period = state.periods.find(p => String(p.id) === String(periodId));
+  const period = state.periods.find(p => String(p.id) === String(periodId) || String(p.periodId) === String(periodId));
   if (!period) return;
 
   const periodEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate);
   adminAttEditEventSelect.innerHTML = renderEventOptions(periodEvents, null, 'id');
   adminAttEditEventSelect.disabled = false;
+
+  adminAttEditEventSelect.onchange = (e) => {
+    if (e.target.value) {
+      renderAdminAttEditList(e.target.value);
+    } else {
+      if (container) container.innerHTML = '';
+    }
+  };
+
+  if (adminAttEditEventSelect.value) {
+    renderAdminAttEditList(adminAttEditEventSelect.value);
+  }
 }
 
 function renderAdminAttEditList(eventId) {
@@ -881,9 +912,9 @@ function renderAdminAttEditList(eventId) {
     return;
   }
 
-  const event = state.events.find(e => String(e.id) === String(eventId));
+  const event = state.events.find(e => String(e.id) === String(eventId) || String(e.eventId) === String(eventId));
   if (!event) {
-    container.innerHTML = '<p class="text-muted">イベントが見つかりません。</p>';
+    container.innerHTML = '<p class="text-muted" style="padding: 1rem;">イベントが見つかりません。</p>';
     return;
   }
 
