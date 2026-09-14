@@ -191,7 +191,7 @@
           </div>
           <div class="form-group mb-1">
             <label>2. イベントを選択</label>
-            <select id="admin-att-edit-event-select" disabled style="font-size: 0.9rem; padding: 0.4rem;">
+            <select id="admin-att-edit-event-select" disabled onchange="renderAdminAttEditList(this.value)" style="font-size: 0.9rem; padding: 0.4rem;">
               <option value="">-- 先に期間を選択してください --</option>
             </select>
           </div>
