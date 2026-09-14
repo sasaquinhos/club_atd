@@ -33,6 +33,8 @@ const adminEventPeriodSelect = document.getElementById('admin-event-period-selec
 const eventPeriodSelect = document.getElementById('event-period-id');
 const adminPhotoPeriodSelect = document.getElementById('admin-photo-period-select');
 const adminPhotoEventSelect = document.getElementById('admin-photo-event-select');
+const adminAttEditPeriodSelect = document.getElementById('admin-att-edit-period-select');
+const adminAttEditEventSelect = document.getElementById('admin-att-edit-event-select');
 
 // Modal Elements
 const editModal = document.getElementById('edit-modal');
@@ -104,6 +106,16 @@ async function init() {
   if (adminEventPeriodSelect) {
     adminEventPeriodSelect.addEventListener('change', () => {
       updateAdminEventSelect(adminEventPeriodSelect.value);
+    });
+  }
+  if (adminAttEditPeriodSelect) {
+    adminAttEditPeriodSelect.addEventListener('change', () => {
+      updateAdminAttEditEventSelect(adminAttEditPeriodSelect.value);
+    });
+  }
+  if (adminAttEditEventSelect) {
+    adminAttEditEventSelect.addEventListener('change', () => {
+      renderAdminAttEditList(adminAttEditEventSelect.value);
     });
   }
 }
@@ -825,6 +837,199 @@ function renderAdminUI() {
       adminPhotoPeriodSelect.value = prevVal;
     }
   }
+
+  // Attendance Edit Period Select
+  if (adminAttEditPeriodSelect) {
+    const prevVal = adminAttEditPeriodSelect.value;
+    adminAttEditPeriodSelect.innerHTML = '<option value="">-- 期間を選択 --</option>' +
+      state.periods.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+    if (!prevVal && curPeriod) {
+      adminAttEditPeriodSelect.value = curPeriod.id;
+      updateAdminAttEditEventSelect(curPeriod.id);
+    } else if (prevVal) {
+      adminAttEditPeriodSelect.value = prevVal;
+    }
+  }
+}
+
+function updateAdminAttEditEventSelect(periodId) {
+  if (!adminAttEditEventSelect) return;
+  const container = document.getElementById('admin-att-edit-list-container');
+  if (container) container.innerHTML = '';
+
+  if (!periodId) {
+    adminAttEditEventSelect.innerHTML = '<option value="">-- 先に期間を選択してください --</option>';
+    adminAttEditEventSelect.disabled = true;
+    return;
+  }
+
+  const period = state.periods.find(p => String(p.id) === String(periodId));
+  if (!period) return;
+
+  const periodEvents = state.events.filter(e => e.date >= period.startdate && e.date <= period.enddate);
+  adminAttEditEventSelect.innerHTML = renderEventOptions(periodEvents, null, 'id');
+  adminAttEditEventSelect.disabled = false;
+}
+
+function renderAdminAttEditList(eventId) {
+  const container = document.getElementById('admin-att-edit-list-container');
+  if (!container) return;
+
+  if (!eventId) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const event = state.events.find(e => String(e.id) === String(eventId));
+  if (!event) {
+    container.innerHTML = '<p class="text-muted">イベントが見つかりません。</p>';
+    return;
+  }
+
+  // Active members at event date
+  const activeMembers = state.members.filter(m => isMemberActiveAt(m, event.date));
+  if (activeMembers.length === 0) {
+    container.innerHTML = '<p class="text-muted">このイベント日に在籍メンバーはいません。</p>';
+    return;
+  }
+
+  let html = `
+    <div style="background: #f8fafc; padding: 0.75rem; border-radius: 6px; border: 1px solid #cbd5e1; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+      <div style="font-weight: bold; font-size: 0.95rem;">📅 ${event.date} ${event.title}</div>
+      <button class="btn btn-secondary btn-sm" onclick="setAllUnansweredToAttendance('${eventId}')" style="width: auto;">💡 未回答者をすべて「出席」にする</button>
+    </div>
+    <div style="max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.5rem; background: #fff;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+        <thead>
+          <tr style="border-bottom: 2px solid #e2e8f0; text-align: left; background: #f1f5f9;">
+            <th style="padding: 0.5rem;">メンバー</th>
+            <th style="padding: 0.5rem;">ステータス</th>
+            <th style="padding: 0.5rem;">コメント (任意)</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  activeMembers.forEach(m => {
+    const key = `${eventId}_${m.id}`;
+    const att = state.attendance[key] || {};
+    const curStatus = att.status || '';
+    const curComment = att.comment || '';
+
+    const statuses = ['', '出席', '見学', '欠席', '未定'];
+    const statusOptions = statuses.map(s => {
+      const label = s === '' ? '-- 未回答 --' : s;
+      return `<option value="${s}" ${s === curStatus ? 'selected' : ''}>${label}</option>`;
+    }).join('');
+
+    let statusStyle = '';
+    if (curStatus === '出席') statusStyle = 'color: #16a34a; font-weight: bold;';
+    else if (curStatus === '欠席') statusStyle = 'color: #dc2626; font-weight: bold;';
+    else if (curStatus === '見学') statusStyle = 'color: #2563eb; font-weight: bold;';
+    else if (curStatus === '未定') statusStyle = 'color: #d97706;';
+    else statusStyle = 'color: #ef4444; font-style: italic;';
+
+    html += `
+      <tr style="border-bottom: 1px solid #f1f5f9;">
+        <td style="padding: 0.5rem; font-weight: 600;">
+          ${m.name}
+          <div style="font-size: 0.75rem; color: #64748b; font-weight: normal;">${m.affiliation || ''}</div>
+        </td>
+        <td style="padding: 0.5rem;">
+          <select id="att-edit-status-${m.id}" class="form-select att-edit-status-select" data-member-id="${m.id}" data-original-status="${curStatus}" style="padding: 0.3rem; ${statusStyle}">
+            ${statusOptions}
+          </select>
+        </td>
+        <td style="padding: 0.5rem;">
+          <input type="text" id="att-edit-comment-${m.id}" class="att-edit-comment-input" data-member-id="${m.id}" data-original-comment="${curComment}" value="${escapeHtml(curComment)}" placeholder="メモ..." style="width: 100%; padding: 0.3rem; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 4px;">
+        </td>
+      </tr>
+    `;
+  });
+
+  html += `
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top: 1rem; text-align: right;">
+      <button id="btn-save-att-edit" class="btn" onclick="saveAdminAttEdit('${eventId}')" style="width: auto; padding: 0.6rem 1.5rem;">💾 変更内容を一括保存</button>
+    </div>
+  `;
+
+  container.innerHTML = html;
+}
+
+function setAllUnansweredToAttendance(eventId) {
+  const statusSelects = document.querySelectorAll('.att-edit-status-select');
+  let count = 0;
+  statusSelects.forEach(select => {
+    if (!select.value) {
+      select.value = '出席';
+      select.style.color = '#16a34a';
+      select.style.fontWeight = 'bold';
+      count++;
+    }
+  });
+  alert(`${count} 名の未回答者を「出席」に一括変更しました。「一括保存」ボタンを押すと確定します。`);
+}
+
+async function saveAdminAttEdit(eventId) {
+  const saveBtn = document.getElementById('btn-save-att-edit');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerText = '保存中...';
+  }
+
+  const statusSelects = document.querySelectorAll('.att-edit-status-select');
+  const updates = [];
+
+  statusSelects.forEach(select => {
+    const memberId = select.getAttribute('data-member-id');
+    const origStatus = select.getAttribute('data-original-status') || '';
+    const status = select.value;
+
+    const commentInput = document.getElementById(`att-edit-comment-${memberId}`);
+    const origComment = commentInput ? commentInput.getAttribute('data-original-comment') || '' : '';
+    const comment = commentInput ? commentInput.value.trim() : '';
+
+    if (status !== origStatus || comment !== origComment) {
+      updates.push({ memberId, status, comment });
+    }
+  });
+
+  if (updates.length === 0) {
+    alert('変更された出欠データはありません。');
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = '💾 変更内容を一括保存'; }
+    return;
+  }
+
+  showLoading(true);
+  let successCount = 0;
+
+  for (const item of updates) {
+    try {
+      const res = await apiCall('update_attendance', { eventId, memberId: item.memberId, status: item.status, comment: item.comment });
+      if (res.result === 'success') {
+        const key = `${eventId}_${item.memberId}`;
+        if (item.status) {
+          state.attendance[key] = { status: item.status, comment: item.comment };
+        } else {
+          delete state.attendance[key];
+        }
+        successCount++;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  saveToLocal();
+  showLoading(false);
+
+  alert(`${successCount} 件の出欠変更を保存しました。`);
+  renderAdminAttEditList(eventId);
+  renderStatusUI(); // Update status table if visible
 }
 
 function updateAdminEventSelect(periodId) {
